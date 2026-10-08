@@ -84,7 +84,7 @@ button.act:hover{background:var(--bg2)}
       <div><label>目的国</label><select id="f_dest"><option value="">全部</option></select></div>
       <div><label>异常类型</label><select id="f_type"><option value="">全部</option></select></div>
       <div><label>第二排 · 流程与处置</label></div><div></div><div></div><div></div>
-      <div><label>分级</label><select id="f_level"><option value="">全部</option><option>红</option><option>黄</option><option>判丢</option></select></div>
+      <div><label>分级</label><select id="f_level"><option value="">全部</option><option>红</option><option>黄</option><option>判丢</option><option>提醒(非异常)</option></select></div>
       <div><label>责任方</label><select id="f_resp"><option value="">全部</option></select></div>
       <div><label>处置状态</label><select id="f_disp"><option value="">全部</option><option>待处理</option><option>已认领</option><option>已销案</option></select></div>
       <div><label>触发时间</label><select id="f_time"><option value="">全部</option><option value="today">今日</option><option value="week">本周</option></select></div>
@@ -125,7 +125,7 @@ async function sha256(s){const b=await crypto.subtle.digest("SHA-256",new TextEn
 async function tryGate(){if(await sha256(document.getElementById("pw").value)===GATE_HASH){sessionStorage.setItem("pm_ok","1");document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");init()}else{document.getElementById("gerr").textContent="口令不正确"}}
 if(sessionStorage.getItem("pm_ok")==="1"){document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");window.addEventListener("DOMContentLoaded",init)}
 const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],exceptions:[],thresholds:{}};
-const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray"};
+const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray","提醒":"b-gray"};
 const STAGE_COLOR={"揽收前":"#378add","揽收/首公里":"#378add","干线":"#378add","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
 function tab(id,btn){["t1","t2","t3","t4"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
   document.querySelectorAll(".tabs button").forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
@@ -135,7 +135,7 @@ function init(){
   document.getElementById("cutoff").textContent="数据截至 "+(d.meta.cutoff||"—")+" · 示例/种子数据以底表为准";
   const s=d.summary||{};
   document.getElementById("kpis").innerHTML=[
-    ["在途总单量",s.total||0,""],["红色异常",s.red||0,"color:var(--red)"],["黄色观察",s.yellow||0,"color:var(--amb)"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),""]]
+    ["在途总单量",s.total||0,""],["红色异常",s.red||0,"color:var(--red)"],["黄色观察",s.yellow||0,"color:var(--amb)"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),""],["待取提醒(非异常)",s.reminders||0,"color:var(--tx2)"]]
     .map(([k,v,st])=>`<div class="card"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
   const dist=d.stage_dist||{};const mx=Math.max(1,...Object.values(dist));
   const order=["揽收前","揽收/首公里","干线","出口清关","进口清关","尾程","尾程-待取","其他","异常挂起","无轨迹"];
@@ -166,7 +166,7 @@ function filtered(){
     if(g("f_channel")&&e.channel!==g("f_channel"))return false;
     if(g("f_dest")&&e.dest!==g("f_dest"))return false;
     if(g("f_type")&&e.type!==g("f_type"))return false;
-    if(g("f_level")&&e.level!==g("f_level"))return false;
+    if(g("f_level")&&!(g("f_level")==="提醒"?(e.kind==="reminder"&&e.level==="提醒"):e.level===g("f_level")))return false;
     if(g("f_resp")&&e.responsible!==g("f_resp"))return false;
     return true;});
 }
