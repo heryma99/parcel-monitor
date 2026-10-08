@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小包异常监控 · Parcel Monitor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="data.js"></script>
+<style>
+:root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
+*{box-sizing:border-box;margin:0}
+body{font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:13px;color:var(--tx);background:var(--bg);line-height:1.6}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px}
+h1{font-size:16px;font-weight:500}
+.badge{font-size:12px;padding:2px 8px;border-radius:999px;display:inline-block}
+.b-blu{background:var(--blubg);color:var(--blu)}.b-gray{background:var(--bg2);color:var(--tx2)}
+.b-red{background:var(--redbg);color:var(--red)}.b-amb{background:var(--ambbg);color:var(--amb)}.b-grn{background:var(--grnbg);color:var(--grn)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--bd);margin:14px 0}
+.tabs button{border:none;background:none;padding:7px 12px;font-size:13px;color:var(--tx2);cursor:pointer;border-bottom:2px solid transparent}
+.tabs button.on{color:var(--tx);font-weight:500;border-bottom-color:var(--tx)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--bg2);border-radius:8px;padding:14px}
+.card .k{color:var(--tx2);font-size:13px}.card .v{font-size:24px;font-weight:500;margin-top:2px}
+select,input{padding:6px 8px;border:0.5px solid var(--bd);border-radius:6px;background:#fff;font-size:13px;color:var(--tx)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--tx2);font-weight:400;text-align:left;padding:8px 6px;border-bottom:1px solid var(--bd)}
+td{padding:8px 6px;border-bottom:0.5px solid var(--bd);vertical-align:top}
+button.act{border:0.5px solid var(--bd);background:#fff;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;color:var(--tx)}
+button.act:hover{background:var(--bg2)}
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--bg2);border-radius:8px;padding:12px;margin-bottom:12px}
+.fgrid label{font-size:12px;color:var(--tx3);display:block;margin-bottom:3px}
+.fgrid select{width:100%}
+.hint{font-size:12px;color:var(--tx3)}
+.muted{color:var(--tx2)}
+.tl{border-left:2px solid var(--bd);margin-left:6px;padding-left:16px}
+.tl .ev{margin-bottom:12px}
+.tl .t{font-weight:500}.tl .n{color:var(--tx3);font-weight:400;font-size:12px}
+.tl .d{color:var(--tx2)}
+.rowdist{display:grid;grid-template-columns:72px 56px minmax(0,1fr) 48px;gap:0 10px;align-items:center;row-gap:10px;margin:10px 0 14px}
+.rowdist .bar{height:16px;background:var(--bg2);border-radius:4px;overflow:hidden}
+.rowdist .bar>div{height:100%}
+#gate{max-width:360px;margin:15vh auto;text-align:center}
+#gate input{width:220px;margin:12px 0}
+.hidden{display:none}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div id="gate" class="wrap">
+  <h1>小包异常监控</h1>
+  <p class="muted">内部系统 · 请输入访问口令</p>
+  <input id="pw" type="password" placeholder="访问口令" onkeydown="if(event.key==='Enter')tryGate()">
+  <br><button class="act" onclick="tryGate()">进入</button>
+  <p id="gerr" class="hint" style="color:var(--red);margin-top:8px"></p>
+</div>
+<div id="app" class="wrap hidden">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+    <h1>小包异常监控看板</h1>
+    <div><span class="badge b-blu" id="scope"></span> <span class="badge b-gray" id="cutoff"></span></div>
+  </div>
+  <div class="tabs">
+    <button class="on" data-t="t1" onclick="tab('t1',this)">监控总览</button>
+    <button data-t="t2" onclick="tab('t2',this)">异常明细 + 导出</button>
+    <button data-t="t3" onclick="tab('t3',this)">运单轨迹</button>
+    <button data-t="t4" onclick="tab('t4',this)">阈值标准</button>
+  </div>
+  <div id="t1">
+    <div class="cards" id="kpis"></div>
+    <p style="font-weight:500;margin-bottom:2px">在途分布（按节点）<span class="hint"> · 各行相加 = 在途总量</span></p>
+    <p class="hint">一张单此刻停在哪个节点就计入哪一行；每日随轨迹刷新重算</p>
+    <div class="rowdist" id="dist"></div>
+    <div class="legend">
+      <span><span class="dot" style="background:#378add"></span>蓝 = 正常流转</span>
+      <span><span class="dot" style="background:#0f6e56"></span>绿 = 已交末端派送</span>
+      <span><span class="dot" style="background:#a32d2d"></span>红 = 异常挂起</span>
+    </div>
+  </div>
+  <div id="t2" class="hidden">
+    <div class="fgrid">
+      <div><label>第一排 · 归属链</label></div><div></div><div></div><div></div>
+      <div><label>物流商</label><select id="f_carrier" onchange="fillChannel()"><option value="">全部</option></select></div>
+      <div><label>渠道</label><select id="f_channel"><option value="">全部</option></select></div>
+      <div><label>目的国</label><select id="f_dest"><option value="">全部</option></select></div>
+      <div><label>异常类型</label><select id="f_type"><option value="">全部</option></select></div>
+      <div><label>第二排 · 流程与处置</label></div><div></div><div></div><div></div>
+      <div><label>分级</label><select id="f_level"><option value="">全部</option><option>红</option><option>黄</option><option>判丢</option></select></div>
+      <div><label>责任方</label><select id="f_resp"><option value="">全部</option></select></div>
+      <div><label>处置状态</label><select id="f_disp"><option value="">全部</option><option>待处理</option><option>已认领</option><option>已销案</option></select></div>
+      <div><label>触发时间</label><select id="f_time"><option value="">全部</option><option value="today">今日</option><option value="week">本周</option></select></div>
+    </div>
+    <div style="overflow-x:auto"><table id="extab"><thead><tr>
+      <th>分级</th><th>运单号</th><th>渠道</th><th>目的国</th><th>异常类型</th><th>判定依据</th><th>责任方</th><th>动作</th><th>标记</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">
+      <button class="act" onclick="exportExcel('detail')">导出 Excel · 明细模式</button>
+      <button class="act" onclick="exportExcel('summary')">导出 Excel · 汇总模式</button>
+      <span class="hint" id="fname"></span>
+    </div>
+  </div>
+  <div id="t3" class="hidden">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="wlist"></div>
+    <div id="wdetail"></div>
+  </div>
+  <div id="t4" class="hidden" id2="t4">
+    <div class="cards">
+      <div class="card"><p class="k">T1 黄色观察</p><p style="font-weight:500;margin:4px 0">沉默 &gt; 中位间隔 × 3 且 &gt; 48h</p><span class="hint">自家 P50 基线 · 系数可调</span></div>
+      <div class="card"><p class="k">T2 红色处置</p><p style="font-weight:500;margin:4px 0">沉默 &gt; 该桶 P95 分位</p><span class="hint">阶段×国家×末端 · ≥30样本启用</span></div>
+      <div class="card" style="border:2px solid var(--blubg)"><p class="k">T3 判丢（硬标准）</p><p style="font-weight:500;margin:4px 0">30 天无更新</p><span class="badge b-blu">17TRACK 官方 Expired</span></div>
+    </div>
+    <table><tr><th>规则</th><th>阈值</th><th>出处</th><th>状态</th></tr>
+      <tr><td>出库超时（LSR）</td><td>超预计发货日 = 下单+2 个工作日</td><td>Amazon Seller Central（口径B统一）</td><td><span class="badge b-grn">生效</span></td></tr>
+      <tr><td>无轨迹判丢</td><td>30 天</td><td>17TRACK 官方 Expired</td><td><span class="badge b-grn">生效</span></td></tr>
+      <tr><td>揽收超时</td><td>48h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+      <tr><td>干线滞留</td><td>72h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+      <tr><td>尾程停滞</td><td>7 天</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+      <tr><td>隐性停滞 T1/T2</td><td>P50×3 / P95 分桶</td><td>自家轨迹分布</td><td><span class="badge b-amb">冷启动中（4周回填）</span></td></tr>
+    </table>
+    <p class="hint" style="margin-top:10px">P2 预留维度：仓库（6子仓）、平台/店铺——聚水潭订单字段对接后启用。处置状态可在异常明细页更新（当前版本本地记录）。</p>
+  </div>
+</div>
+<script>
+const GATE_HASH="dd4f17d0395c2e94ff61a0239bdd614cf1c05af3fe3feb0e7d98f01a0d2a27b6";
+async function sha256(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+async function tryGate(){if(await sha256(document.getElementById("pw").value)===GATE_HASH){sessionStorage.setItem("pm_ok","1");document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");init()}else{document.getElementById("gerr").textContent="口令不正确"}}
+if(sessionStorage.getItem("pm_ok")==="1"){document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");window.addEventListener("DOMContentLoaded",init)}
+const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],exceptions:[],thresholds:{}};
+const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray"};
+const STAGE_COLOR={"揽收前":"#378add","揽收/首公里":"#378add","干线":"#378add","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
+function tab(id,btn){["t1","t2","t3","t4"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
+  document.querySelectorAll(".tabs button").forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
+function init(){
+  const d=D();
+  document.getElementById("scope").textContent=d.meta.p1_scope||"P1";
+  document.getElementById("cutoff").textContent="数据截至 "+(d.meta.cutoff||"—")+" · 示例/种子数据以底表为准";
+  const s=d.summary||{};
+  document.getElementById("kpis").innerHTML=[
+    ["在途总单量",s.total||0,""],["红色异常",s.red||0,"color:var(--red)"],["黄色观察",s.yellow||0,"color:var(--amb)"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),""]]
+    .map(([k,v,st])=>`<div class="card"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
+  const dist=d.stage_dist||{};const mx=Math.max(1,...Object.values(dist));
+  const order=["揽收前","揽收/首公里","干线","出口清关","进口清关","尾程","尾程-待取","其他","异常挂起","无轨迹"];
+  document.getElementById("dist").innerHTML=Object.entries(dist).sort((a,b)=>order.indexOf(a[0])-order.indexOf(b[0]))
+    .map(([k,v])=>`<p class="muted">${k}</p><p style="font-weight:500;text-align:right;${k==="异常挂起"?"color:var(--red)":""}">${v}</p>
+      <div class="bar"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
+      <p class="hint">${(v/d.summary.total*100).toFixed(0)}%</p>`).join("");
+  fillFilters();renderEx();renderWaybillList();
+}
+function uniq(a){return [...new Set(a.filter(Boolean))]}
+function fillFilters(){
+  const d=D();const ex=d.exceptions||[];
+  const carriers=uniq(ex.map(e=>e.channel.split("-")[0]));
+  document.getElementById("f_carrier").innerHTML='<option value="">全部</option>'+carriers.map(c=>`<option>${c}</option>`).join("");
+  document.getElementById("f_dest").innerHTML='<option value="">全部</option>'+uniq(ex.map(e=>e.dest)).map(c=>`<option>${c}</option>`).join("");
+  document.getElementById("f_type").innerHTML='<option value="">全部</option>'+uniq(ex.map(e=>e.type)).map(c=>`<option>${c}</option>`).join("");
+  document.getElementById("f_resp").innerHTML='<option value="">全部</option>'+uniq(ex.map(e=>e.responsible)).map(c=>`<option>${c}</option>`).join("");
+}
+function fillChannel(){
+  const v=document.getElementById("f_carrier").value;const d=D();
+  const chs=uniq((d.exceptions||[]).filter(e=>!v||e.channel.split("-")[0]===v).map(e=>e.channel));
+  document.getElementById("f_channel").innerHTML='<option value="">全部</option>'+chs.map(c=>`<option>${c}</option>`).join("");
+}
+function filtered(){
+  const g=id=>document.getElementById(id).value;const d=D();const now=new Date();
+  return (d.exceptions||[]).filter(e=>{
+    if(g("f_carrier")&&e.channel.split("-")[0]!==g("f_carrier"))return false;
+    if(g("f_channel")&&e.channel!==g("f_channel"))return false;
+    if(g("f_dest")&&e.dest!==g("f_dest"))return false;
+    if(g("f_type")&&e.type!==g("f_type"))return false;
+    if(g("f_level")&&e.level!==g("f_level"))return false;
+    if(g("f_resp")&&e.responsible!==g("f_resp"))return false;
+    return true;});
+}
+function renderEx(){
+  const tb=document.querySelector("#extab tbody");
+  tb.innerHTML=filtered().map((e,i)=>`<tr>
+    <td><span class="badge ${LV[e.level]||"b-gray"}">${e.level}</span></td>
+    <td>${e.waybill}</td><td>${e.channel||"—"}</td><td>${e.dest||"—"}</td>
+    <td>${e.type}</td><td class="muted">${e.basis}</td><td>${e.responsible}</td>
+    <td class="muted">${e.action}</td><td class="hint">${e.tag||""}</td></tr>`).join("")
+    ||'<tr><td colspan="9" class="hint">当前筛选无异常单</td></tr>';
+  document.getElementById("fname").textContent="文件名示例：异常清单_按当前筛选_"+(D().meta.generated_at||"").slice(0,10)+".xlsx";
+}
+function exportExcel(mode){
+  const d=D();const wb=new ExcelJS.Workbook();wb.creator="Parcel Monitor";
+  const ws=wb.addWorksheet(mode==="detail"?"异常明细":"汇总");
+  ws.addRow(["小包异常清单 · "+(mode==="detail"?"明细模式":"汇总模式")]);
+  ws.addRow(["数据截至："+(d.meta.cutoff||"")+" · 生成时间："+(d.meta.generated_at||"")]);
+  ws.addRow([]);
+  if(mode==="detail"){
+    ["分级","运单号","跟踪号","渠道","目的国","末端服务商","异常类型","判定依据","责任方","动作","标记"].forEach(h=>ws.addRow([h]));
+    const trk={};(d.waybills||[]).forEach(w=>trk[w.waybill]=w);
+    filtered().forEach(e=>ws.addRow([e.level,e.waybill,(trk[e.waybill]||{}).tracking||"",e.channel,e.dest,(trk[e.waybill]||{}).provider||"",e.type,e.basis,e.responsible,e.action,e.tag||""]));
+  }else{
+    const m={};filtered().forEach(e=>{const k=e.channel+" | "+e.dest+" | "+e.type;m[k]=(m[k]||0)+1});
+    ["渠道","目的国","异常类型","单量"].forEach(h=>ws.addRow([h]));
+    Object.entries(m).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>ws.addRow([...k.split(" | "),v]));
+  }
+  ws.getRow(1).font={bold:true};ws.columns.forEach(c=>c.width=18);
+  wb.xlsx.writeBuffer().then(b=>{const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([b],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+    a.download="异常清单_"+(D().meta.generated_at||"").slice(0,10)+".xlsx";a.click()});
+}
+let curW=null;
+function renderWaybillList(){
+  const d=D();const ws=d.waybills||[];
+  document.getElementById("wlist").innerHTML=ws.map((w,i)=>`<button class="act" onclick="showW(${i})">${w.waybill}</button>`).join("")||'<span class="hint">底表为空：请通过对账单导入运单号（pipeline/底表.csv）</span>';
+  if(ws.length)showW(0);
+}
+function showW(i){
+  const w=D().waybills[i];if(!w)return;curW=w;
+  const evs=(w.events||[]).map(e=>`<div class="ev"><p class="t">${e.t} <span class="n">· ${e.node||""}${e.loc?" · "+e.loc:""}</span></p><p class="d">${e.desc||""}${e.abnormal&&e.abnormal.length?" · 异常码:"+e.abnormal.join(";"):""}</p></div>`).join("");
+  const ex=(w.exceptions||[]).map(e=>`<span class="badge ${LV[e.level]||"b-gray"}" style="margin-right:6px">${e.type} · ${e.basis}</span>`).join("");
+  document.getElementById("wdetail").innerHTML=`
+    <div style="border:0.5px solid var(--bd);border-radius:12px;padding:16px 20px">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <p style="font-weight:500;font-size:14px">${w.waybill} → ${w.dest||"?"} ${w.channel?"· "+w.channel:""}</p>
+        <span class="badge ${w.status===60?"b-red":w.status===50?"b-grn":w.status===40?"b-red":"b-gray"}">TrackingStatus ${w.status??"—"} ${w.status===60?"· 异常":w.status===50?"· 已签收":w.status===40?"· 投递失败":""}</span>
+      </div>
+      <p class="muted" style="margin:4px 0 12px">末端 ${w.provider||"—"} · 跟踪号 ${w.tracking||"—"} · 来源 ${w.source||"—"}${w.pod?` · <a href="${w.pod}" target="_blank">POD 妥投证明</a>`:""}</p>
+      ${ex?`<p style="margin-bottom:12px">${ex}</p>`:""}
+      ${w.fetch_error?`<p class="hint" style="color:var(--red)">拉取失败：${w.fetch_error}</p>`:""}
+      <div class="tl">${evs||'<p class="hint">无轨迹</p>'}</div>
+      <p class="hint">轨迹时间已按 ProcessTimezone 归一化为北京时间展示</p>
+    </div>`;
+}
+window.addEventListener("DOMContentLoaded",()=>{if(sessionStorage.getItem("pm_ok")==="1"&&!document.getElementById("app").classList.contains("hidden"))init()});
+</script>
+</body>
+</html>
