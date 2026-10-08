@@ -83,15 +83,15 @@ button.act:hover{background:var(--bg2)}
   <div id="t2" class="hidden">
     <div class="fgrid">
       <div><label>第一排 · 归属链</label></div><div></div><div></div><div></div>
-      <div><label>物流商</label><select id="f_carrier" onchange="fillChannel()"><option value="">全部</option></select></div>
-      <div><label>渠道</label><select id="f_channel"><option value="">全部</option></select></div>
-      <div><label>目的国</label><select id="f_dest"><option value="">全部</option></select></div>
-      <div><label>异常类型</label><select id="f_type"><option value="">全部</option></select></div>
+      <div><label>物流商</label><select id="f_carrier" onchange="fillChannel();renderEx()"><option value="">全部</option></select></div>
+      <div><label>渠道</label><select id="f_channel" onchange="renderEx()"><option value="">全部</option></select></div>
+      <div><label>目的国</label><select id="f_dest" onchange="renderEx()"><option value="">全部</option></select></div>
+      <div><label>异常类型</label><select id="f_type" onchange="renderEx()"><option value="">全部</option></select></div>
       <div><label>第二排 · 流程与处置</label></div><div></div><div></div><div></div>
-      <div><label>分级</label><select id="f_level"><option value="">全部</option><option>红</option><option>黄</option><option>判丢</option><option>提醒(非异常)</option></select></div>
-      <div><label>责任方</label><select id="f_resp"><option value="">全部</option></select></div>
-      <div><label>处置状态</label><select id="f_disp"><option value="">全部</option><option>待处理</option><option>已认领</option><option>已销案</option></select></div>
-      <div><label>触发时间</label><select id="f_time"><option value="">全部</option><option value="today">今日</option><option value="week">本周</option></select></div>
+      <div><label>分级</label><select id="f_level" onchange="renderEx()"><option value="">全部</option><option>红</option><option>黄</option><option>判丢</option><option>提醒(非异常)</option></select></div>
+      <div><label>责任方</label><select id="f_resp" onchange="renderEx()"><option value="">全部</option></select></div>
+      <div><label>处置状态</label><select id="f_disp" onchange="renderEx()"><option value="">全部</option><option>待处理</option><option>已认领</option><option>已销案</option></select></div>
+      <div><label>触发时间</label><select id="f_time" onchange="renderEx()"><option value="">全部</option><option value="today">今日</option><option value="week">本周</option></select></div>
     </div>
     <div style="overflow-x:auto"><table id="extab"><thead><tr>
       <th>分级</th><th>运单号</th><th>渠道</th><th>目的国</th><th>异常类型</th><th>判定依据</th><th>责任方</th><th>动作</th><th>标记</th>
@@ -213,6 +213,7 @@ function fillChannel(){
 }
 function filtered(){
   const g=id=>document.getElementById(id).value;const d=D();const now=new Date();
+  const lastEv={};(d.waybills||[]).forEach(w=>{if(w.events&&w.events.length)lastEv[w.waybill]=w.events[w.events.length-1].t;});
   return (d.exceptions||[]).filter(e=>{
     if(g("f_carrier")&&e.channel.split("-")[0]!==g("f_carrier"))return false;
     if(g("f_channel")&&e.channel!==g("f_channel"))return false;
@@ -223,6 +224,13 @@ function filtered(){
       else if(g("f_level")==="__stall__"){if(!(e.type.includes("停滞")||e.level==="判丢"))return false;}
       else if(e.level!==g("f_level"))return false;}
     if(g("f_resp")&&e.responsible!==g("f_resp"))return false;
+    if(g("f_disp")&&(e.disp||"待处理")!==g("f_disp"))return false;
+    if(g("f_time")&&g("f_time")!=="全部"){
+      const t=lastEv[e.waybill];if(!t)return false;
+      const days=(Date.now()-new Date(t.replace(" ","T")).getTime())/86400000;
+      if(g("f_time")==="今日"&&days>1)return false;
+      if(g("f_time")==="本周"&&days>7)return false;
+      if(g("f_time")==="本月"&&days>31)return false;}
     return true;});
 }
 function renderEx(){
