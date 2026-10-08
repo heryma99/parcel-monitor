@@ -44,6 +44,10 @@ button.act:hover{background:var(--bg2)}
 .hidden{display:none}
 .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+#drill{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
+#drill .box{background:#fff;border-radius:12px;border:0.5px solid var(--bd);max-width:860px;width:100%;padding:16px 20px}
+.rowclick{cursor:pointer}
+.rowclick:hover{background:var(--bg2)}
 </style>
 </head>
 <body>
@@ -119,6 +123,17 @@ button.act:hover{background:var(--bg2)}
     <p class="hint" style="margin-top:10px">P2 预留维度：仓库（6子仓）、平台/店铺——聚水潭订单字段对接后启用。处置状态可在异常明细页更新（当前版本本地记录）。</p>
   </div>
 </div>
+<div id="drill" onclick="if(event.target===this)this.style.display='none'">
+  <div class="box">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+      <p style="font-weight:500;font-size:14px;margin:0" id="drill_title"></p>
+      <button class="act" onclick="document.getElementById('drill').style.display='none'">关闭</button>
+    </div>
+    <div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table id="drill_tab"><thead><tr>
+      <th>运单号</th><th>渠道</th><th>目的国</th><th>状态</th><th>最近轨迹</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
+  </div>
+</div>
 <script>
 const GATE_HASH="9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0";
 async function sha256(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
@@ -128,22 +143,59 @@ const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],ex
 const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray","提醒":"b-gray"};
 const STAGE_COLOR={"揽收前":"#378add","揽收/首公里":"#378add","干线":"#378add","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
 function tab(id,btn){["t1","t2","t3","t4"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
-  document.querySelectorAll(".tabs button").forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
+  const bs=document.querySelectorAll(".tabs button");
+  if(!btn)btn=[...bs].find(b=>b.dataset.t===id);
+  bs.forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
 function init(){
   const d=D();
   document.getElementById("scope").textContent=d.meta.p1_scope||"P1";
   document.getElementById("cutoff").textContent="数据截至 "+(d.meta.cutoff||"—")+" · 示例/种子数据以底表为准";
   const s=d.summary||{};
+  const KPI_CLICK={"红色异常":"红","黄色观察":"黄","隐性停滞/判丢":"__stall__","异常合计":"","待取提醒(非异常)":"提醒"};
   document.getElementById("kpis").innerHTML=[
-    ["在途总单量",s.total||0,""],["红色异常",s.red||0,"color:var(--red)"],["黄色观察",s.yellow||0,"color:var(--amb)"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),""],["待取提醒(非异常)",s.reminders||0,"color:var(--tx2)"]]
-    .map(([k,v,st])=>`<div class="card"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
+    ["在途总单量",s.total||0,"","__all__"],["红色异常",s.red||0,"color:var(--red)","红"],["黄色观察",s.yellow||0,"color:var(--amb)","黄"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)","__stall__"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),"",""],["待取提醒(非异常)",s.reminders||0,"color:var(--tx2)","提醒"]]
+    .map(([k,v,st,fl])=>`<div class="card" style="cursor:pointer" onclick="kpiDrill('${fl}')"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
+  window.KPI_CLICK=KPI_CLICK;
   const dist=d.stage_dist||{};const mx=Math.max(1,...Object.values(dist));
   const order=["揽收前","揽收/首公里","干线","出口清关","进口清关","尾程","尾程-待取","其他","异常挂起","无轨迹"];
   document.getElementById("dist").innerHTML=Object.entries(dist).sort((a,b)=>order.indexOf(a[0])-order.indexOf(b[0]))
-    .map(([k,v])=>`<p class="muted">${k}</p><p style="font-weight:500;text-align:right;${k==="异常挂起"?"color:var(--red)":""}">${v}</p>
-      <div class="bar"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
-      <p class="hint">${(v/d.summary.total*100).toFixed(0)}%</p>`).join("");
+    .map(([k,v])=>`<p class="muted rowclick" onclick="drillStage('${k}')">${k}</p><p class="rowclick" style="font-weight:500;text-align:right;${k==="异常挂起"?"color:var(--red)":""}" onclick="drillStage('${k}')">${v}</p>
+      <div class="bar rowclick" onclick="drillStage('${k}')"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
+      <p class="hint">${d.summary.total?(v/d.summary.total*100).toFixed(0):0}%</p>`).join("");
   fillFilters();renderEx();renderWaybillList();
+}
+const NODE_STAGE_JS={"ORDER_CREATION":"揽收前","PRE_INFO":"揽收前","CARRIER_PICKUP":"揽收/首公里","FIRST_MILE_ARRIVE":"揽收/首公里","FIRST_MILE_DEPART":"揽收/首公里","DEPART_CONFIRM_OC":"揽收/首公里","IN_TRANSIT":"干线","IN_TRANSIT_CARRIER":"干线","MAIN_LINE_ARRIVE":"干线","MAIN_LINE_DEPART":"干线","TRANSITHUB_ARRIVE":"干线","ARRIVE_CONFIRM_OC":"干线","ARRIVE_ORIN_CUSTOMS":"出口清关","EXPORT CUSTOMS COMPLETE":"出口清关","EXPORT_CUSTOMS_COMPLETE":"出口清关","CUSTOMS_PROCESSING":"进口清关","CUSTOMS_COMPLETE":"进口清关","CUSTOMS_INSPCTION":"进口清关","CUSTOMS_RELEASE":"进口清关","INBOUND_CCA":"进口清关","PICKUP_CARGO_TERMINAL":"尾程","READY_FOR_OUTBOUND":"尾程","DELIVERY_ATTEMPT":"尾程派送中","REDELIVERY":"尾程派送中","DELIVERY_FAILURE":"投递失败","DELIVERED":"已签收","RETURNED_TO_SENDER":"退件","RETURNED":"退件","ARRANGE_FOR_RETURN":"退件","PACKAGE_EXCEPTION":"异常","TMS_OC":"揽收前","TMS_AS":"揽收前","TMS_PU":"揽收/首公里","TMS_IT":"干线","TMS_UN":"干线","TMS_WPU":"尾程","TMS_OD":"尾程派送中","TMS_FD":"已签收","TMS_DF":"投递失败","TMS_EXCP":"异常","TMS_RT":"退件"};
+function stageOfEv(e){if(!e)return"无轨迹";if(e.status===50)return"已签收";if(e.status===90)return"退件";const n=(e.node||"").trim();if(NODE_STAGE_JS[n])return NODE_STAGE_JS[n];if(e.status===10)return"揽收前";if(e.status===30)return"尾程-待取";if(e.status===40)return"投递失败";if(e.status===60)return"异常";if(e.status===20)return"干线";return"其他"}
+function waybillStage(w){
+  if(w.cached&&[50,90,100].includes(w.status))return"已完成(历史)";
+  const ex=w.exceptions||[];
+  if(ex.some(e=>e.level==="红"||e.level==="判丢"))return"异常挂起";
+  const evs=w.events||[];
+  return evs.length?stageOfEv(evs[evs.length-1]):"无轨迹";
+}
+function drillStage(stage){
+  const ws=(D().waybills||[]).map((w,i)=>({w,i})).filter(x=>waybillStage(x.w)===stage);
+  document.getElementById("drill_title").textContent=stage+" · "+ws.length+" 单";
+  document.querySelector("#drill_tab tbody").innerHTML=ws.map(({w,i})=>`<tr>
+    <td>${w.waybill}</td><td>${w.channel||"—"}</td><td>${w.dest||"—"}</td>
+    <td>${w.status===50?"已签收":w.status===90?"退回":w.status===60?"异常":w.status===40?"投递失败":w.status===10?"预报":"在途"}</td>
+    <td class="muted">${(w.last_desc||(w.events&&w.events.length?w.events[w.events.length-1].desc:"")||"—").slice(0,50)}</td>
+    <td><button class="act" onclick="document.getElementById('drill').style.display='none';showW(${i});tab('t3')">轨迹</button></td></tr>`).join("")
+    ||'<tr><td colspan="6" class="hint">无运单</td></tr>';
+  document.getElementById("drill").style.display="flex";
+}
+function kpiDrill(fl){
+  if(fl==="__all__"){drillStage("__all__");
+    const ws=(D().waybills||[]).map((w,i)=>({w,i}));
+    document.getElementById("drill_title").textContent="全部在途运单 · "+ws.length+" 单";
+    document.querySelector("#drill_tab tbody").innerHTML=ws.slice(0,300).map(({w,i})=>`<tr>
+      <td>${w.waybill}</td><td>${w.channel||"—"}</td><td>${w.dest||"—"}</td>
+      <td>${waybillStage(w)}</td><td class="muted">${(w.last_desc||"—").slice(0,50)}</td>
+      <td><button class="act" onclick="document.getElementById('drill').style.display='none';showW(${i});tab('t3')">轨迹</button></td></tr>`).join("");
+    document.getElementById("drill").style.display="flex";return;}
+  tab("t2");document.getElementById("f_level").value=fl;
+  if(fl==="提醒")document.getElementById("f_level").value="提醒";
+  renderEx();
 }
 function uniq(a){return [...new Set(a.filter(Boolean))]}
 function fillFilters(){
@@ -166,7 +218,10 @@ function filtered(){
     if(g("f_channel")&&e.channel!==g("f_channel"))return false;
     if(g("f_dest")&&e.dest!==g("f_dest"))return false;
     if(g("f_type")&&e.type!==g("f_type"))return false;
-    if(g("f_level")&&!(g("f_level")==="提醒"?(e.kind==="reminder"&&e.level==="提醒"):e.level===g("f_level")))return false;
+    if(g("f_level")){
+      if(g("f_level")==="提醒"){if(!(e.kind==="reminder"&&e.level==="提醒"))return false;}
+      else if(g("f_level")==="__stall__"){if(!(e.type.includes("停滞")||e.level==="判丢"))return false;}
+      else if(e.level!==g("f_level"))return false;}
     if(g("f_resp")&&e.responsible!==g("f_resp"))return false;
     return true;});
 }
@@ -219,7 +274,7 @@ function showW(i){
       <p class="muted" style="margin:4px 0 12px">末端 ${w.provider||"—"} · 跟踪号 ${w.tracking||"—"} · 来源 ${w.source||"—"}${w.pod?` · <a href="${w.pod}" target="_blank">POD 妥投证明</a>`:""}</p>
       ${ex?`<p style="margin-bottom:12px">${ex}</p>`:""}
       ${w.fetch_error?`<p class="hint" style="color:var(--red)">拉取失败：${w.fetch_error}</p>`:""}
-      <div class="tl">${evs||'<p class="hint">无轨迹</p>'}</div>
+      <div class="tl">${evs||'<p class="hint">'+(w.last_desc?("缓存摘要（终态单不再逐日拉全量轨迹）："+w.last_desc):"无轨迹")+'</p>'}</div>
       <p class="hint">轨迹时间已按 ProcessTimezone 归一化为北京时间展示</p>
     </div>`;
 }
