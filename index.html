@@ -120,7 +120,7 @@ button.act:hover{background:var(--bg2)}
   </div>
 </div>
 <script>
-const GATE_HASH="dd4f17d0395c2e94ff61a0239bdd614cf1c05af3fe3feb0e7d98f01a0d2a27b6";
+const GATE_HASH="9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0";
 async function sha256(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
 async function tryGate(){if(await sha256(document.getElementById("pw").value)===GATE_HASH){sessionStorage.setItem("pm_ok","1");document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");init()}else{document.getElementById("gerr").textContent="口令不正确"}}
 if(sessionStorage.getItem("pm_ok")==="1"){document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");window.addEventListener("DOMContentLoaded",init)}
