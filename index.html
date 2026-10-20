@@ -139,8 +139,11 @@ function renderT4(){
   const th=(D().thresholds)||{}; const B=document.getElementById("t4_body");
   const ver=th.version||"?"; const cal=th.calibrated_at||"";
   const jl=th.judge_lines||{}; const jlRows=Object.entries(jl).map(([k,v])=>`<tr><td>${k==="default"?"默认（其余国家）":k}</td><td>${v} 天</td><td>各国妥投时效P99实证（巴西P99=48.8天→60线）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
-  const sd=th.stage_forecast_direct||{}; const sfRows=Object.entries(sd).slice(0,8).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>直发妥投单段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
-  const gc=th.stage_forecast_gc||{}; const gcRows=Object.entries(gc).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>谷仓语料段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const STAGE_ORDER=["揽收前","揽收/首公里","出口清关","干线","进口清关","尾程","尾程派送中","投递失败","异常","退件"];
+  const stageIdx=k=>{const st=String(k).split("×")[0];const i=STAGE_ORDER.indexOf(st);return i<0?99:i};
+  const byStage=(a,b)=>stageIdx(a)-stageIdx(b)||String(a).localeCompare(String(b));
+  const sd=th.stage_forecast_direct||{}; const sfRows=Object.entries(sd).sort(byStage).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>直发妥投单段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const gc=th.stage_forecast_gc||{}; const gcRows=Object.entries(gc).sort(byStage).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>谷仓语料段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
   const tp=th.transit_p90_by_country||{}; const tpRows=Object.entries(tp).filter(([k])=>["US","BR","GB","FR","IT","ES","JP","CA","AU","DE"].includes(k)).map(([k,v])=>`<tr><td>${k}</td><td>P90 = ${v} 天</td><td>妥投单全程时效分位</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
   B.innerHTML=`
   <div class="cards">
