@@ -107,20 +107,7 @@ button.act:hover{background:var(--bg2)}
     <div id="wdetail"></div>
   </div>
   <div id="t4" class="hidden" id2="t4">
-    <div class="cards">
-      <div class="card"><p class="k">T1 黄色观察</p><p style="font-weight:500;margin:4px 0">沉默 &gt; 中位间隔 × 3 且 &gt; 48h</p><span class="hint">自家 P50 基线 · 系数可调</span></div>
-      <div class="card"><p class="k">T2 红色处置</p><p style="font-weight:500;margin:4px 0">沉默 &gt; 该桶 P95 分位</p><span class="hint">阶段×国家×末端 · ≥30样本启用</span></div>
-      <div class="card" style="border:2px solid var(--blubg)"><p class="k">T3 判丢（硬标准）</p><p style="font-weight:500;margin:4px 0">30 天无更新</p><span class="badge b-blu">17TRACK 官方 Expired</span></div>
-    </div>
-    <table><tr><th>规则</th><th>阈值</th><th>出处</th><th>状态</th></tr>
-      <tr><td>出库超时（LSR）</td><td>超预计发货日 = 下单+2 个工作日</td><td>Amazon Seller Central（口径B统一）</td><td><span class="badge b-grn">生效</span></td></tr>
-      <tr><td>无轨迹判丢</td><td>30 天</td><td>17TRACK 官方 Expired</td><td><span class="badge b-grn">生效</span></td></tr>
-      <tr><td>揽收超时</td><td>48h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
-      <tr><td>干线滞留</td><td>72h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
-      <tr><td>尾程停滞</td><td>7 天</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
-      <tr><td>隐性停滞 T1/T2</td><td>P50×3 / P95 分桶</td><td>自家轨迹分布</td><td><span class="badge b-amb">冷启动中（4周回填）</span></td></tr>
-    </table>
-    <p class="hint" style="margin-top:10px">P2 预留维度：仓库（6子仓）、平台/店铺——聚水潭订单字段对接后启用。处置状态可在异常明细页更新（当前版本本地记录）。</p>
+    <div id="t4_body"></div>
   </div>
 </div>
 <div id="drill" onclick="if(event.target===this)this.style.display='none'">
@@ -143,9 +130,41 @@ const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],ex
 const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray","提醒":"b-gray"};
 const STAGE_COLOR={"揽收前":"#378add","揽收/首公里":"#378add","干线":"#378add","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
 function tab(id,btn){["t1","t2","t3","t4"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
+if(id==="t4")renderT4();
   const bs=document.querySelectorAll(".tabs button");
   if(!btn)btn=[...bs].find(b=>b.dataset.t===id);
   bs.forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
+function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function renderT4(){
+  const th=(D().thresholds)||{}; const B=document.getElementById("t4_body");
+  const ver=th.version||"?"; const cal=th.calibrated_at||"";
+  const jl=th.judge_lines||{}; const jlRows=Object.entries(jl).map(([k,v])=>`<tr><td>${k==="default"?"默认（其余国家）":k}</td><td>${v} 天</td><td>各国妥投时效P99实证（巴西P99=48.8天→60线）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const sd=th.stage_forecast_direct||{}; const sfRows=Object.entries(sd).slice(0,8).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>直发妥投单段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const gc=th.stage_forecast_gc||{}; const gcRows=Object.entries(gc).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>谷仓语料段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const tp=th.transit_p90_by_country||{}; const tpRows=Object.entries(tp).filter(([k])=>["US","BR","GB","FR","IT","ES","JP","CA","AU","DE"].includes(k)).map(([k,v])=>`<tr><td>${k}</td><td>P90 = ${v} 天</td><td>妥投单全程时效分位</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  B.innerHTML=`
+  <div class="cards">
+    <div class="card" style="border:2px solid #f0c1c1"><p class="k">判丢线（硬标准·分国家）</p><p style="font-weight:500;margin:4px 0">静默 ≥ 判丢线：默认 30 天 · 巴西 60 天</p><span class="hint">妥投时效P99实证 · 云途官方双源复核兜底</span></div>
+    <div class="card"><p class="k">红线（推人处置）</p><p style="font-weight:500;margin:4px 0">静默 ≥ ${esc(th.silence_red_d||15)} 天 · 显性码停留 ≥ ${esc((th.explicit_code||{}).red_dwell_d||10)} 天</p><span class="hint">回放实证：判丢线误报0-12%</span></div>
+    <div class="card"><p class="k">黄线（看板关注·不推群）</p><p style="font-weight:500;margin:4px 0">当前站停留 ≥ 该站 P98 · 时效 ≥ 该国 P90</p><span class="hint">异常码出现即通报（历史80%自愈，非问题预言）</span></div>
+  </div>
+  <p class="hint" style="margin:6px 0">引擎版本 <b>${esc(ver)}</b>（校准日 ${esc(cal)}）· 语料：云途直发 84,739 单全轨迹 + 谷仓 4,013 单 + 妥投 70,049 单 · 全部规则经全量回放验证</p>
+  <p style="font-weight:500;margin:10px 0 4px">① 分国家判丢线</p>
+  <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${jlRows}</table>
+  <p style="font-weight:500;margin:10px 0 4px">② 分站停滞黄线（云途直发·阶段×国家 P98）</p>
+  <table><tr><th>阶段×国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${sfRows}</table>
+  <p style="font-weight:500;margin:10px 0 4px">③ 分站停滞黄线（谷仓·阶段级 P98）</p>
+  <table><tr><th>阶段</th><th>阈值</th><th>出处</th><th>状态</th></tr>${gcRows}</table>
+  <p style="font-weight:500;margin:10px 0 4px">④ 时效预警线（全程时效 P90·按国家）</p>
+  <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${tpRows}</table>
+  <p style="font-weight:500;margin:10px 0 4px">⑤ 保留的经验值规则（尚未校准）</p>
+  <table><tr><th>规则</th><th>阈值</th><th>出处</th><th>状态</th></tr>
+    <tr><td>出库超时（LSR）</td><td>下单+2 个工作日</td><td>Amazon Seller Central（口径B统一）</td><td><span class="badge b-grn">官方口径</span></td></tr>
+    <tr><td>揽收超时</td><td>48h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+    <tr><td>长期未上网</td><td>15 天</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+  </table>
+  <p class="hint" style="margin-top:10px">P2 预留维度：仓库（6子仓）、平台/店铺——聚水潭订单字段对接后启用。双源复核：谷仓来源标记单自动调云途官方公网源核验，终态直接改写（防轨迹流缺扫描假警）。</p>`;
+}
 function init(){
   const d=D();
   document.getElementById("scope").textContent=d.meta.p1_scope||"P1";
