@@ -145,6 +145,9 @@ function renderT4(){
   const sd=th.stage_forecast_direct||{}; const sfRows=Object.entries(sd).sort(byStage).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>直发妥投单段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
   const gc=th.stage_forecast_gc||{}; const gcRows=Object.entries(gc).sort(byStage).map(([k,v])=>`<tr><td>${esc(k)}</td><td>P98 = ${v.P98} 天</td><td>谷仓语料段停留分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
   const tp=th.transit_p90_by_country||{}; const tpRows=Object.entries(tp).filter(([k])=>["US","BR","GB","FR","IT","ES","JP","CA","AU","DE"].includes(k)).map(([k,v])=>`<tr><td>${k}</td><td>P90 = ${v} 天</td><td>妥投单全程时效分位</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const hier=th.stage_forecast_hier||{}; const hierMin=th.hier_min_n||30;
+  const hierRows=Object.entries(hier).filter(([k,v])=>v.n>=hierMin&&!k.includes("|*|")).sort(byStage).slice(0,15)
+    .map(([k,v])=>`<tr><td>${esc(k.replace(/\|/g," × "))}</td><td>P98 = ${v.P98} 天</td><td>谷仓妥投单分位（n=${v.n}）</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
   B.innerHTML=`
   <div class="cards">
     <div class="card" style="border:2px solid #f0c1c1"><p class="k">判丢线（硬标准·分国家）</p><p style="font-weight:500;margin:4px 0">静默 ≥ 判丢线：默认 30 天 · 巴西 60 天</p><span class="hint">妥投时效P99实证 · 云途官方双源复核兜底</span></div>
@@ -154,13 +157,15 @@ function renderT4(){
   <p class="hint" style="margin:6px 0">引擎版本 <b>${esc(ver)}</b>（校准日 ${esc(cal)}）· 语料：云途直发 84,739 单全轨迹 + 谷仓 4,013 单 + 妥投 70,049 单 · 全部规则经全量回放验证</p>
   <p style="font-weight:500;margin:10px 0 4px">① 分国家判丢线</p>
   <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${jlRows}</table>
-  <p style="font-weight:500;margin:10px 0 4px">② 分站停滞黄线（云途直发·阶段×国家 P98）</p>
+  <p style="font-weight:500;margin:10px 0 4px">② 分站停滞黄线（层级回退：阶段×国家×渠道 → 阶段×国家 → 阶段全局，样本≥${hierMin}才启用细分桶）</p>
+  <table><tr><th>阶段 × 国家 × 渠道</th><th>阈值</th><th>出处</th><th>状态</th></tr>${hierRows}</table>
+  <p style="font-weight:500;margin:10px 0 4px">③ 分站停滞黄线（云途直发·阶段×国家 P98，直发渠道维度待导出工具加"运输方式"列后启用）</p>
   <table><tr><th>阶段×国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${sfRows}</table>
-  <p style="font-weight:500;margin:10px 0 4px">③ 分站停滞黄线（谷仓·阶段级 P98）</p>
+  <p style="font-weight:500;margin:10px 0 4px">④ 谷仓分站参考表（阶段级，已被②的层级表覆盖时不再单独生效）</p>
   <table><tr><th>阶段</th><th>阈值</th><th>出处</th><th>状态</th></tr>${gcRows}</table>
-  <p style="font-weight:500;margin:10px 0 4px">④ 时效预警线（全程时效 P90·按国家）</p>
+  <p style="font-weight:500;margin:10px 0 4px">⑤ 时效预警线（全程时效 P90·按国家）</p>
   <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${tpRows}</table>
-  <p style="font-weight:500;margin:10px 0 4px">⑤ 保留的经验值规则（尚未校准）</p>
+  <p style="font-weight:500;margin:10px 0 4px">⑥ 保留的经验值规则（尚未校准）</p>
   <table><tr><th>规则</th><th>阈值</th><th>出处</th><th>状态</th></tr>
     <tr><td>出库超时（LSR）</td><td>下单+2 个工作日</td><td>Amazon Seller Central（口径B统一）</td><td><span class="badge b-grn">官方口径</span></td></tr>
     <tr><td>揽收超时</td><td>48h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
