@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021093928"></script>
+<script src="data.js?v=20261021095137"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -146,54 +146,72 @@ function renderT4(){
   const stArr=[...stages].sort((a,b)=>STAGE_ORDER.indexOf(a)-STAGE_ORDER.indexOf(b));
   const B=document.getElementById("t4_body");
   B.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
-    <div><label class="hint" style="display:block;font-size:11px">发货模式</label><select id="t4_mode" onchange="t4Body()" class="sel"><option value="gc">海外仓</option><option value="direct">国内直发</option></select></div>
-    <div><label class="hint" style="display:block;font-size:11px">阶段</label><select id="t4_stage" onchange="t4Body()" class="sel">${stArr.map(x=>`<option>${x}</option>`).join("")}</select></div>
-    <div><label class="hint" style="display:block;font-size:11px">国家</label><select id="t4_country" onchange="t4Body()" class="sel">${[...countries].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
+    <div><label class="hint" style="display:block;font-size:11px">发货模式</label><select id="t4_mode" onchange="t4Body()" class="sel"><option value="all">全部</option><option value="gc">海外仓</option><option value="direct">国内直发</option></select></div>
+    <div><label class="hint" style="display:block;font-size:11px">阶段</label><select id="t4_stage" onchange="t4Body()" class="sel"><option value="*">全部</option>${stArr.map(x=>`<option>${x}</option>`).join("")}</select></div>
+    <div><label class="hint" style="display:block;font-size:11px">国家</label><select id="t4_country" onchange="t4Body()" class="sel"><option value="*">全部</option>${[...countries].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
     <div><label class="hint" style="display:block;font-size:11px">渠道</label><select id="t4_ch" onchange="t4Body()" class="sel"><option value="*">全部</option>${[...chs].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
     <div><label class="hint" style="display:block;font-size:11px">发货仓</label><select id="t4_wh" onchange="t4Body()" class="sel"><option value="*">全部</option>${[...whs].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
     <button class="act" onclick="t4Reset()" style="margin-bottom:1px">重置</button>
   </div><div id="t4_out"></div>`;
-  document.getElementById("t4_stage").value="头程";
   t4Body();
 }
 function t4Reset(){renderT4()}
+function t4Lookup(mode,stage,ctry,ch,wh){
+  const th=D().thresholds||{}; const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
+  const min=th.hier_min_n||30;
+  if(mode==="gc"){
+    const keys=[`${stage}|${wh}|${ctry}|${ch}`,`${stage}|*|${ctry}|${ch}`,`${stage}|${wh}|${ctry}|*`,`${stage}|*|${ctry}|*`,`${stage}|*|*|${ch}`,`${stage}|*|*|*`];
+    for(const k of keys){const v=hier[k];if(v&&v.n>=min&&v.P98)return{k,v};}
+    return null;
+  }
+  const v=direct[`${stage}×${ctry}`];
+  return v&&v.P98?{k:`${stage}×${ctry}（直发）`,v}:null;
+}
 function t4Body(){
   const th=D().thresholds||{}; const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
-  const min=th.hier_min_n||30; const jl=(th.judge_lines||{}); 
+  const min=th.hier_min_n||30; const jl=(th.judge_lines||{});
   const g=id=>document.getElementById(id).value;
   const mode=g("t4_mode"),stage=g("t4_stage"),ctry=g("t4_country"),ch=g("t4_ch"),wh=g("t4_wh");
-  const judge=jl[ctry]||jl["default"]||30;
-  let hit=null,rows=[];
-  if(mode==="gc"){
-    const keys=[`${stage}|${wh==="*"?"*":wh}|${ctry}|${ch}`,`${stage}|*|${ctry}|${ch}`,`${stage}|${wh==="*"?"*":wh}|${ctry}|*`,`${stage}|*|${ctry}|*`,`${stage}|*|*|${ch}`,`${stage}|*|*|*`];
-    const seen=new Set();
-    keys.forEach(k=>{const v=hier[k];if(!v||seen.has(k))return;seen.add(k);rows.push({k,v,used:false});});
-    for(const r of rows){if(r.v.n>=min&&r.v.P98){r.used=true;hit=r;break;}}
-  } else {
-    const v=direct[`${stage}×${ctry}`];
-    if(v){rows.push({k:`${stage}×${ctry}（国内直发·阶段×国家）`,v,used:true});hit=rows[0];}
-  }
+  const STAGE_ORDER=["揽收前","揽收/首公里","出口清关","头程","进口清关","尾程","尾程派送中"];
+  const modes=mode==="all"?["gc","direct"]:[mode];
+  const stArr=stage==="*"?STAGE_ORDER.filter(st=>stagesHas(st)):[stage];
+  const ctryArr=ctry==="*"?[...new Set([...Object.keys(hier).map(k=>k.split("|")[2]),...Object.keys(direct).map(k=>k.split("×")[1])])].filter(c=>c&&c!=="*"&&c!=="??").sort():[ctry];
+  function stagesHas(st){return hier[st+"|*|*|*"]||direct[st+"×*"]||Object.keys(hier).some(k=>k.startsWith(st+"|"))||Object.keys(direct).some(k=>k.startsWith(st+"×"));}
+  // 组合评估
+  const combos=[];
+  modes.forEach(m=>stArr.forEach(st=>ctryArr.forEach(c=>{
+    const hit=t4Lookup(m,st,c,ch,wh);
+    if(hit)combos.push({m,st,c,hit,judge:jl[c]||jl["default"]||30});
+  })));
   const out=document.getElementById("t4_out");
-  let eff;
-  if(hit){eff=`<div style="border:1px solid #85b7eb;background:#E6F1FB;border-radius:10px;padding:10px 14px;margin-bottom:12px">
+  const single=(mode!=="all"&&stage!=="*"&&ctry!=="*");
+  let html="";
+  if(single&&combos.length===1){
+    const c0=combos[0];const hit=c0.hit;
+    html+=`<div style="border:1px solid #85b7eb;background:#E6F1FB;border-radius:10px;padding:10px 14px;margin-bottom:12px">
       <p style="margin:0;font-size:12px;color:var(--tx2)">实际生效黄线（引擎回退模拟，与判定逻辑同源）</p>
-      <p style="margin:4px 0 0;font-size:15px;font-weight:500;color:#185FA5">${stage}停留 ≥ ${hit.v.P98} 天 → 黄色观察</p>
-      <p style="margin:4px 0 0;font-size:12px;color:var(--tx2)">来自桶 <b>${hit.k.replace(/\|/g," | ")}</b>（n=${hit.v.n}）· 再停留 ${Math.max(0,(judge-hit.v.P98)).toFixed(1)} 天触及判丢线 ${judge} 天 · 红线静默 ${th.silence_red_d||15} 天</p></div>`;
+      <p style="margin:4px 0 0;font-size:15px;font-weight:500;color:#185FA5">${c0.st}停留 ≥ ${hit.v.P98} 天 → 黄色观察</p>
+      <p style="margin:4px 0 0;font-size:12px;color:var(--tx2)">来自桶 <b>${hit.k.replace(/\|/g," | ")}</b>（n=${hit.v.n}）· 再停留 ${Math.max(0,(c0.judge-hit.v.P98)).toFixed(1)} 天触及判丢线 ${c0.judge} 天 · 红线静默 ${th.silence_red_d||15} 天</p></div>`;
+    if(mode==="gc"){
+      const keys=[`${stage}|${wh}|${ctry}|${ch}`,`${stage}|*|${ctry}|${ch}`,`${stage}|${wh}|${ctry}|*`,`${stage}|*|${ctry}|*`,`${stage}|*|*|${ch}`,`${stage}|*|*|*`];
+      const seen=new Set();const rows=[];
+      keys.forEach(k=>{const v=hier[k];if(!v||seen.has(k))return;seen.add(k);rows.push({k,v,used:v.n>=min&&v.P98&&hit.k===k});});
+      html+=`<p style="font-weight:500;margin:0 0 6px">命中桶明细（按回退链顺序）</p>
+      <table><tr><th>层级桶（阶段 | 仓 | 国家 | 渠道）</th><th>n</th><th>P50</th><th>P95 关注线</th><th>P98 黄线</th></tr>
+      ${rows.map(r=>`<tr style="${r.used?"background:#E6F1FB":""}"><td>${r.k.replace(/\|/g," | ")}${r.used?" ★生效":""}</td><td style="text-align:center">${r.v.n}${r.v.n<min?' <span class="hint">(n&lt;'+min+'不启用)</span>':''}</td><td style="text-align:center">${r.v.P50}</td><td style="text-align:center">${r.v.P95}</td><td style="text-align:center">${r.v.P98}</td></tr>`).join("")}</table>`;
+    }
   } else {
-    eff=`<div style="border:1px solid var(--bd);border-radius:10px;padding:10px 14px;margin-bottom:12px;background:var(--bg2)"><p style="margin:0;font-size:12px;color:var(--tx2)">该组合暂无足够样本的基线（n&lt;${min}），引擎回退到阶段全局或旧表；建议积累数据后再细分</p></div>`;
+    // 多组合：旅程总览表（每行=阶段×国家×模式 的生效黄线）
+    const grp=m=>`<p style="font-weight:500;margin:10px 0 4px">${m==="gc"?"海外仓":"国内直发"}${mode==="all"?"（基线独立，两套不可混用）":""}</p>
+    <table><tr><th>阶段</th><th>国家</th><th>生效黄线(P98)</th><th>来自桶</th><th>n</th><th>判丢线</th></tr>
+    ${combos.filter(c=>c.m===m).sort((a,b)=>STAGE_ORDER.indexOf(a.st)-STAGE_ORDER.indexOf(b.st)||a.c.localeCompare(b.c))
+      .map(c=>`<tr><td>${c.st}</td><td>${c.c}</td><td style="font-weight:500">${c.hit.v.P98} 天</td><td class="hint">${c.hit.k.replace(/\|/g," | ")}</td><td style="text-align:center">${c.hit.v.n}</td><td>${c.judge} 天</td></tr>`).join("")||'<tr><td colspan="6" class="hint">无</td></tr>'}</table>`;
+    html=modes.map(grp).join("");
   }
-  const tbl=rows.map(r=>`<tr style="${r.used?"background:#E6F1FB":""}">
-      <td>${r.k.replace(/\|/g," | ")}${r.used?" ★生效":""}</td>
-      <td style="text-align:center">${r.v.n}${r.v.n<min?' <span class="hint">(n&lt;'+min+'不启用)</span>':''}</td>
-      <td style="text-align:center">${r.v.P50}</td><td style="text-align:center">${r.v.P95}</td>
-      <td style="text-align:center">${r.v.P98}</td></tr>`).join("");
   const jlRows=Object.entries(jl).map(([k,v])=>`<tr><td>${k==="default"?"默认（其余国家）":k}</td><td>${v} 天</td><td>各国妥投时效P99实证</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
   const tp=th.transit_p90_by_country||{};
   const tpRows=Object.entries(tp).filter(([k])=>["US","BR","GB","FR","IT","ES","JP","CA","AU","DE"].includes(k)).sort().map(([k,v])=>`<tr><td>${k}</td><td>P90 = ${v} 天</td><td>妥投单全程时效分位</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
-  out.innerHTML=eff+`
-  <p style="font-weight:500;margin:0 0 6px">命中桶明细（按回退链顺序）</p>
-  <table><tr><th>层级桶（阶段 | 仓 | 国家 | 渠道）</th><th>n</th><th>P50</th><th>P95 关注线</th><th>P98 黄线</th></tr>${tbl||'<tr><td colspan="5" class="hint">无</td></tr>'}</table>
-  <p class="hint" style="margin-top:8px">回退链（海外仓）：阶段×仓×国×渠道(n≥${min}) → 阶段×国×渠道 → 阶段×仓×国 → 阶段×国 → 阶段×渠道 → 阶段全局；国内直发走自家 阶段×国家 基线（渠道维度待导出加"运输方式"列）。</p>
+  html+=`
   <p style="font-weight:500;margin:14px 0 4px">分国家判丢线</p>
   <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${jlRows}</table>
   <p style="font-weight:500;margin:14px 0 4px">时效预警线（全程时效 P90）</p>
@@ -204,7 +222,8 @@ function t4Body(){
     <tr><td>揽收超时</td><td>48h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
     <tr><td>长期未上网</td><td>15 天</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
   </table>
-  <p class="hint" style="margin-top:10px">引擎 ${th.version||""} · 语料：直发84,739单 + 谷仓4,013单 + 妥投70,049单 · 全部规则经全量回放验证 · 双源复核兜底（谷仓轨迹缺扫描自动按云途官方终态改写）</p>`;
+  <p class="hint" style="margin-top:10px">引擎 ${th.version||""} · 语料：直发84,739单 + 谷仓4,013单 + 妥投70,049单 · 全部规则经全量回放验证 · 回退链：阶段×仓×国×渠道(n≥${min}) → … → 阶段全局；直发与海外仓基线严格隔离</p>`;
+  out.innerHTML=html;
 }
 function init(){
   const d=D();
