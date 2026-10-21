@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021134237"></script>
+<script src="data.js?v=20261021155129"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -69,6 +69,7 @@ button.act:hover{background:var(--bg2)}
     <button data-t="t2" onclick="tab('t2',this)">异常明细 + 导出</button>
     <button data-t="t3" onclick="tab('t3',this)">运单轨迹</button>
     <button data-t="t4" onclick="tab('t4',this)">阈值标准</button>
+    <button data-t="t5" onclick="tab('t5',this)">跟单配置</button>
   </div>
   <div id="t1">
     <div class="cards" id="kpis"></div>
@@ -93,12 +94,18 @@ button.act:hover{background:var(--bg2)}
       <div><label>责任方</label><select id="f_resp" onchange="renderEx()"><option value="">全部</option></select></div>
       <div><label>处置状态</label><select id="f_disp" onchange="renderEx()"><option value="">全部</option><option>待处理</option><option>已认领</option><option>已销案</option></select></div>
       <div><label>触发时间</label><select id="f_time" onchange="renderEx()"><option value="">全部</option><option value="today">今日</option><option value="week">本周</option></select></div>
+      <div><label>第三排 · 跟单与定位</label></div><div></div><div></div><div></div>
+      <div><label>运单号搜索</label><input id="f_wb" placeholder="输入运单号片段" oninput="renderEx()" style="width:100%;border:0.5px solid var(--bd);border-radius:8px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--tx)"></div>
+      <div><label>来源</label><select id="f_source" onchange="renderEx()"><option value="">全部</option><option>谷仓</option><option>云途直发</option></select></div>
+      <div><label>负责人</label><select id="f_owner" onchange="renderEx()"><option value="">全部</option><option value="__un__">未分配</option></select></div>
+      <div><label>停留时长</label><select id="f_dwell" onchange="renderEx()"><option value="">全部</option><option value="7">≥7天</option><option value="15">≥15天</option><option value="30">≥30天</option></select></div>
+      <div><label>我的身份</label><select id="me_sel" onchange="localStorage.setItem('pm_me',this.value);renderEx();renderKPI()"><option value="">（未选择）</option></select></div>
     </div>
     <div style="overflow-x:auto"><table id="extab"><thead><tr>
-      <th>分级</th><th>运单号</th><th>渠道</th><th>目的国</th><th>异常类型</th><th>判定依据</th><th>责任方</th><th>动作</th><th>标记</th>
+      <th>分级</th><th>运单号</th><th>来源</th><th>负责人</th><th>渠道</th><th>目的国</th><th>异常类型</th><th>判定依据</th><th>责任方</th><th>动作</th><th>标记</th>
     </tr></thead><tbody></tbody></table></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">
-      <button class="act" onclick="exportExcel('detail')">导出 Excel · 明细模式</button>
+      <span class="badge b-blu" id="excount" style="margin-right:8px"></span><button class="act" onclick="exportExcel('detail')">导出 Excel · 明细模式</button>
       <button class="act" onclick="exportExcel('summary')">导出 Excel · 汇总模式</button>
       <span class="hint" id="fname"></span>
     </div>
@@ -109,6 +116,9 @@ button.act:hover{background:var(--bg2)}
   </div>
   <div id="t4" class="hidden" id2="t4">
     <div id="t4_body"></div>
+  </div>
+  <div id="t5" class="hidden">
+    <div id="t5_body"></div>
   </div>
 </div>
 <div id="drill" onclick="if(event.target===this)this.style.display='none'">
@@ -130,8 +140,9 @@ if(sessionStorage.getItem("pm_ok")==="1"){document.getElementById("gate").classL
 const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],exceptions:[],thresholds:{}};
 const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray","提醒":"b-gray"};
 const STAGE_COLOR={"揽收前":"#378add","揽收/首公里":"#378add","头程":"#378add","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
-function tab(id,btn){["t1","t2","t3","t4"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
+function tab(id,btn){["t1","t2","t3","t4","t5"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
 if(id==="t4")renderT4();
+if(id==="t5")renderT5();
   const bs=document.querySelectorAll(".tabs button");
   if(!btn)btn=[...bs].find(b=>b.dataset.t===id);
   bs.forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
@@ -225,14 +236,59 @@ function t4Body(){
   <p class="hint" style="margin-top:10px">引擎 ${th.version||""} · 语料：直发84,739单 + 谷仓4,013单 + 妥投70,049单 · 全部规则经全量回放验证 · 回退链：阶段×仓×国×渠道(n≥${min}) → … → 阶段全局；直发与海外仓基线严格隔离</p>`;
   out.innerHTML=html;
 }
+function renderT5(){
+  const st=t5Staff();
+  const B=document.getElementById("t5_body");
+  const peopleStr=(st.people||[]).filter(p=>p&&p!=="未分配").join("、");
+  const ruleRows=(st.rules||[]).slice().sort((a,b)=>(a.p||0)-(b.p||0)).map((r,i)=>`<tr>
+    <td><input class="t5in" style="width:44px" data-f="p" data-i="${i}" value="${r.p??i+1}"></td>
+    <td><select class="t5in" data-f="who" data-i="${i}">${["未分配",...(st.people||[])].filter((x,ix,arr)=>x&&arr.indexOf(x)===ix).map(p=>`<option${r.who===p?" selected":""}>${p}</option>`).join("")}</select></td>
+    <td><select class="t5in" data-f="mode" data-i="${i}"><option value=""${!r.mode?" selected":""}>通配</option><option${r.mode==="谷仓"?" selected":""}>谷仓</option><option${r.mode==="云途直发"?" selected":""}>云途直发</option></select></td>
+    <td><input class="t5in" style="width:110px" data-f="channel" data-i="${i}" value="${r.channel||""}" placeholder="留空=通配"></td>
+    <td><input class="t5in" style="width:56px" data-f="dest" data-i="${i}" value="${r.dest||""}" placeholder="留空=通配"></td>
+    <td><input class="t5in" style="width:110px" data-f="type" data-i="${i}" value="${r.type||""}" placeholder="留空=通配"></td>
+    <td><input class="t5in" style="width:40px" data-f="level" data-i="${i}" value="${r.level||""}" placeholder="通配"></td>
+    <td><input class="t5in" style="width:140px" data-f="note" data-i="${i}" value="${r.note||""}"></td>
+    <td><button class="act" onclick="t5DelRule(${i})">删</button></td></tr>`).join("");
+  B.innerHTML=`
+  <p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效（localStorage）；② 点「导出JSON」把配置文件发给助理，即可发布为全团队共用版本；③ 匹配规则按优先级升序，首条命中即定负责人，全不命中进「未分配」池。</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+    <div style="flex:1;min-width:220px"><label class="hint" style="display:block;font-size:11px">人员名单（顿号分隔，未分配为系统保留）</label>
+      <input id="t5_people" class="t5in" style="width:100%" value="${peopleStr}" placeholder="如：张三、李四、王五"></div>
+    <button class="act" onclick="t5Apply()">应用人员</button>
+    <button class="act" onclick="t5AddRule()">加规则</button>
+    <button class="act" onclick="t5Save()">保存（本机生效）</button>
+    <button class="act" onclick="t5Export()">导出JSON（发助理发布）</button>
+    <button class="act" onclick="t5Reset()">恢复内置版本</button>
+  </div>
+  <table><thead><tr><th>优先级</th><th>负责人</th><th>发货模式</th><th>渠道</th><th>目的国</th><th>异常类型</th><th>级别</th><th>备注</th><th></th></tr></thead><tbody>${ruleRows}</tbody></table>
+  <p class="hint" style="margin-top:10px">匹配维度说明：发货模式=谷仓/云途直发；渠道支持包含匹配（如填 GC 即命中 GC_PARCEL）；「未分配」单在异常清单中标红，可在负责人筛选里一键查看认领情况。</p>`;
+}
+function t5Collect(){
+  const st=t5Staff();
+  st.people=["未分配",...(document.getElementById("t5_people").value.split(/[、,，\s]+/).map(x=>x.trim()).filter(Boolean))];
+  const rules=[];
+  document.querySelectorAll("#t5_body tbody tr").forEach(tr=>{
+    const g=f=>{const el=tr.querySelector(`[data-f="${f}"]`);return el?el.value.trim():""};
+    rules.push({p:+(g("p")||99),who:g("who")||"未分配",mode:g("mode"),channel:g("channel"),dest:g("dest"),type:g("type"),level:g("level"),note:g("note")});
+  });
+  st.rules=rules;return st;
+}
+function t5Apply(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));fillOwnerFilter();renderT5();renderEx();renderKPI&&renderKPI();}
+function t5Save(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));alert("已保存，本浏览器即时生效。要全团队生效请点「导出JSON」发给助理发布。");renderT5();}
+function t5AddRule(){const st=t5Collect();st.rules.push({p:st.rules.length+1,who:"未分配",mode:"",channel:"",dest:"",type:"",level:"",note:""});localStorage.setItem("pm_staff_v1",JSON.stringify(st));renderT5();}
+function t5DelRule(i){const st=t5Collect();st.rules.splice(i,1);st.rules.forEach((r,ix)=>r.p=ix+1);localStorage.setItem("pm_staff_v1",JSON.stringify(st));renderT5();fillOwnerFilter();renderEx();}
+function t5Export(){const st=t5Staff();const blob=new Blob([JSON.stringify(st,null,1)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="staff.json";a.click();}
+function t5Reset(){localStorage.removeItem("pm_staff_v1");renderT5();fillOwnerFilter();renderEx();}
 function init(){
   const d=D();
   document.getElementById("scope").textContent=d.meta.p1_scope||"P1";
   document.getElementById("cutoff").textContent="数据截至 "+(d.meta.cutoff||"—")+" · 示例/种子数据以底表为准";
   const s=d.summary||{};
-  const KPI_CLICK={"红色异常":"红","黄色观察":"黄","隐性停滞/判丢":"__stall__","异常合计":"","待取提醒(非异常)":"提醒"};
+  const KPI_CLICK={"红色异常":"红","黄色观察":"黄","隐性停滞/判丢":"__stall__","异常合计":"","待取提醒(非异常)":"提醒","我的待办":"__mine__"};
   document.getElementById("kpis").innerHTML=[
-    ["在途总单量",s.total||0,"","__all__"],["红色异常",s.red||0,"color:var(--red)","红"],["黄色观察",s.yellow||0,"color:var(--amb)","黄"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)","__stall__"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),"",""],["待取提醒(非异常)",s.reminders||0,"color:var(--tx2)","提醒"]]
+    ["在途总单量",s.total||0,"","__all__"],["红色异常",s.red||0,"color:var(--red)","红"],["黄色观察",s.yellow||0,"color:var(--amb)","黄"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)","__stall__"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),"",""],["待取提醒(非异常)",s.reminders||0,"color:var(--tx2)","提醒"],["我的待办",(function(){const me=localStorage.getItem("pm_me");if(!me)return 0;return (d.exceptions||[]).filter(e=>ownerOf(e)===me&&e.level!=="提醒"&&(e.disp||"待处理")!=="已销案").length})(),"color:var(--blubg)","__mine__"]]
     .map(([k,v,st,fl])=>`<div class="card" style="cursor:pointer" onclick="kpiDrill('${fl}')"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
   window.KPI_CLICK=KPI_CLICK;
   const dist=d.stage_dist||{};const mx=Math.max(1,...Object.values(dist));
@@ -241,7 +297,7 @@ function init(){
     .map(([k,v])=>`<p class="muted rowclick" onclick="drillStage('${k}')">${k}</p><p class="rowclick" style="font-weight:500;text-align:right;${k==="异常挂起"?"color:var(--red)":""}" onclick="drillStage('${k}')">${v}</p>
       <div class="bar rowclick" onclick="drillStage('${k}')"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
       <p class="hint">${d.summary.total?(v/d.summary.total*100).toFixed(0):0}%</p>`).join("");
-  fillFilters();renderEx();renderWaybillList();
+  fillFilters();fillOwnerFilter();renderEx();renderWaybillList();
 }
 const NODE_STAGE_JS={"ORDER_CREATION":"揽收前","PRE_INFO":"揽收前","CARRIER_PICKUP":"揽收/首公里","FIRST_MILE_ARRIVE":"揽收/首公里","FIRST_MILE_DEPART":"揽收/首公里","DEPART_CONFIRM_OC":"揽收/首公里","IN_TRANSIT":"头程","IN_TRANSIT_CARRIER":"头程","MAIN_LINE_ARRIVE":"头程","MAIN_LINE_DEPART":"头程","TRANSITHUB_ARRIVE":"头程","ARRIVE_CONFIRM_OC":"头程","ARRIVE_ORIN_CUSTOMS":"出口清关","EXPORT CUSTOMS COMPLETE":"出口清关","EXPORT_CUSTOMS_COMPLETE":"出口清关","CUSTOMS_PROCESSING":"进口清关","CUSTOMS_COMPLETE":"进口清关","CUSTOMS_INSPCTION":"进口清关","CUSTOMS_RELEASE":"进口清关","INBOUND_CCA":"进口清关","PICKUP_CARGO_TERMINAL":"尾程","READY_FOR_OUTBOUND":"尾程","DELIVERY_ATTEMPT":"尾程派送中","REDELIVERY":"尾程派送中","DELIVERY_FAILURE":"投递失败","DELIVERED":"已签收","RETURNED_TO_SENDER":"退件","RETURNED":"退件","ARRANGE_FOR_RETURN":"退件","PACKAGE_EXCEPTION":"异常","TMS_OC":"揽收前","TMS_AS":"揽收前","TMS_PU":"揽收/首公里","TMS_IT":"头程","TMS_UN":"头程","TMS_WPU":"尾程","TMS_OD":"尾程派送中","TMS_FD":"已签收","TMS_DF":"投递失败","TMS_EXCP":"异常","TMS_RT":"退件"};
 function stageOfEv(e){if(!e)return"无轨迹";if(e.status===50)return"已签收";if(e.status===90)return"退件";const n=(e.node||"").trim();if(NODE_STAGE_JS[n])return NODE_STAGE_JS[n];if(e.status===10)return"揽收前";if(e.status===30)return"尾程-待取";if(e.status===40)return"投递失败";if(e.status===60)return"异常";if(e.status===20)return"头程";return"其他"}
@@ -272,6 +328,7 @@ function kpiDrill(fl){
       <td>${waybillStage(w)}</td><td class="muted">${(w.last_desc||"—").slice(0,50)}</td>
       <td><button class="act" onclick="document.getElementById('drill').style.display='none';showW(${i});tab('t3')">轨迹</button></td></tr>`).join("");
     document.getElementById("drill").style.display="flex";return;}
+  if(fl==="__mine__"){const me=localStorage.getItem("pm_me")||"";tab("t2");document.getElementById("f_owner").value=me;renderEx();return;}
   tab("t2");document.getElementById("f_level").value=fl;
   if(fl==="提醒")document.getElementById("f_level").value="提醒";
   renderEx();
@@ -304,6 +361,10 @@ function filtered(){
       else if(e.level!==g("f_level"))return false;}
     if(g("f_resp")&&e.responsible!==g("f_resp"))return false;
     if(g("f_disp")&&(e.disp||"待处理")!==g("f_disp"))return false;
+    if(g("f_source")&&(e.source||"")!==g("f_source"))return false;
+    if(g("f_wb")&&!(e.waybill||"").includes(g("f_wb").trim().toUpperCase()))return false;
+    if(g("f_owner")){const o=ownerOf(e);if(g("f_owner")==="__un__"?o!=="未分配":o!==g("f_owner"))return false;}
+    if(g("f_dwell")){const d=dwellDays(e);if(!(d>=+g("f_dwell")))return false;}
     if(g("f_time")&&g("f_time")!=="全部"){
       const t=lastEv[e.waybill];if(!t)return false;
       const days=(Date.now()-new Date(t.replace(" ","T")).getTime())/86400000;
@@ -312,14 +373,54 @@ function filtered(){
       if(g("f_time")==="本月"&&days>31)return false;}
     return true;});
 }
+function t5Staff(){const me=localStorage.getItem("pm_staff_v1");if(me){try{return JSON.parse(me)}catch(e){}}return (D().staff)||{people:["未分配"],rules:[]};}
+function ownerOf(ex){
+  const st=t5Staff();const mode=(ex.source==="谷仓")?"谷仓":(ex.source==="云途直发"?"云途直发":"");
+  const rules=(st.rules||[]).slice().sort((a,b)=>(a.p||0)-(b.p||0));
+  for(const r of rules){
+    if(r.mode&&r.mode!==mode)continue;
+    if(r.channel&&!(ex.channel||"").includes(r.channel))continue;
+    if(r.dest&&ex.dest!==r.dest)continue;
+    if(r.type&&ex.type!==r.type)continue;
+    if(r.level&&ex.level!==r.level)continue;
+    return r.who||"未分配";
+  }
+  return "未分配";
+}
+function dwellDays(ex){
+  const m=(ex.basis||"").match(/(?:停留|静默|无更新|发货已)(\d+(?:\.\d+)?)/);
+  if(m)return parseFloat(m[1]);
+  const m2=(ex.basis||"").match(/(\d+)天无更新/);
+  return m2?parseFloat(m2[1]):0;
+}
+const LV_ORD={"判丢":0,"红":1,"黄":2,"提醒":3};
+function fillOwnerFilter(){
+  const d=D();const st=t5Staff();
+  const owners=[...new Set((d.exceptions||[]).map(e=>ownerOf(e)))].sort();
+  const cur=document.getElementById("f_owner").value;
+  document.getElementById("f_owner").innerHTML='<option value="">全部</option><option value="__un__">未分配</option>'+owners.filter(o=>o!=="未分配").map(o=>`<option>${o}</option>`).join("");
+  document.getElementById("f_owner").value=[...owners,"__un__"].includes(cur)||cur===""?cur:"";
+  const me=localStorage.getItem("pm_me")||"";
+  const msel=document.getElementById("me_sel");
+  msel.innerHTML='<option value="">（未选择）</option>'+[...new Set([...(st.people||[]),...owners])].filter(p=>p&&p!=="未分配").map(p=>`<option${p===me?" selected":""}>${p}</option>`).join("");
+}
 function renderEx(){
   const tb=document.querySelector("#extab tbody");
-  tb.innerHTML=filtered().map((e,i)=>`<tr>
+  const rows=filtered().map(e=>({e,o:ownerOf(e),d:dwellDays(e)}));
+  rows.sort((a,b)=>{
+    const la=LV_ORD[a.e.level]??9, lb=LV_ORD[b.e.level]??9;
+    if(la!==lb)return la-lb;
+    return b.d-a.d;
+  });
+  tb.innerHTML=rows.map(({e,o})=>`<tr>
     <td><span class="badge ${LV[e.level]||"b-gray"}">${e.level}</span></td>
-    <td>${e.waybill}</td><td>${e.channel||"—"}</td><td>${e.dest||"—"}</td>
+    <td>${e.waybill}</td><td class="muted">${e.source||"—"}</td>
+    <td>${o==="未分配"?'<span style="color:var(--red);font-weight:500">未分配</span>':o}</td>
+    <td>${e.channel||"—"}</td><td>${e.dest||"—"}</td>
     <td>${e.type}</td><td class="muted">${e.basis}</td><td>${e.responsible}</td>
     <td class="muted">${e.action}</td><td class="hint">${e.tag||""}</td></tr>`).join("")
-    ||'<tr><td colspan="9" class="hint">当前筛选无异常单</td></tr>';
+    ||'<tr><td colspan="11" class="hint">当前筛选无异常单</td></tr>';
+  document.getElementById("excount").textContent=rows.length+" 条命中";
   document.getElementById("fname").textContent="文件名示例：异常清单_按当前筛选_"+(D().meta.generated_at||"").slice(0,10)+".xlsx";
 }
 function exportExcel(mode){
