@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021170816"></script>
+<script src="data.js?v=20261021171028"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -172,6 +172,7 @@ function t4Lookup(mode,stage,ctry,ch,wh){
   const th=D().thresholds||{}; const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
   const min=th.hier_min_n||30;
   if(mode==="gc"){
+    if(stage==="到达待取")return null;
     const keys=[`${stage}|${wh}|${ctry}|${ch}`,`${stage}|*|${ctry}|${ch}`,`${stage}|${wh}|${ctry}|*`,`${stage}|*|${ctry}|*`,`${stage}|*|*|${ch}`,`${stage}|*|*|*`];
     for(const k of keys){const v=hier[k];if(v&&v.n>=min&&v.P98)return{k,v};}
     return null;
@@ -217,7 +218,8 @@ function t4Body(){
     const grp=m=>`<p style="font-weight:500;margin:10px 0 4px">${m==="gc"?"海外仓":"国内直发"}${mode==="all"?"（基线独立，两套不可混用）":""}</p>
     <table><tr><th>阶段</th><th>国家</th><th>生效黄线(P98)</th><th>来自桶</th><th>n</th><th>判丢线</th></tr>
     ${combos.filter(c=>c.m===m).sort((a,b)=>STAGE_ORDER.indexOf(a.st)-STAGE_ORDER.indexOf(b.st)||a.c.localeCompare(b.c))
-      .map(c=>`<tr><td>${c.st}</td><td>${c.c}</td><td style="font-weight:500">${c.hit.v.P98} 天</td><td class="hint">${c.hit.k.replace(/\|/g," | ")}</td><td style="text-align:center">${c.hit.v.n}</td><td>${c.judge} 天</td></tr>`).join("")||'<tr><td colspan="6" class="hint">无</td></tr>'}</table>`;
+      .map(c=>`<tr><td>${c.st}</td><td>${c.c}</td><td style="font-weight:500">${c.hit.v.P98} 天</td><td class="hint">${c.hit.k.replace(/\|/g," | ")}</td><td style="text-align:center">${c.hit.v.n}</td><td>${c.judge} 天</td></tr>`).join("")
+      +(m==="gc"?'<tr><td>到达待取</td><td colspan="5" class="hint">不走停滞黄线（样本不足），由「待取提醒」管理：≥2天提醒取件，超保留期转退件台账</td></tr>':'')}</table>`;
     html=modes.map(grp).join("");
   }
   const jlRows=Object.entries(jl).map(([k,v])=>`<tr><td>${k==="default"?"默认（其余国家）":k}</td><td>${v} 天</td><td>各国妥投时效P99实证</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
