@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021164435"></script>
+<script src="data.js?v=20261021165305"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -140,7 +140,7 @@ async function tryGate(){if(await sha256(document.getElementById("pw").value)===
 if(sessionStorage.getItem("pm_ok")==="1"){document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");window.addEventListener("DOMContentLoaded",init)}
 const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],exceptions:[],thresholds:{}};
 const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray","提醒":"b-gray"};
-const STAGE_COLOR={"揽收前":"#378add","揽收/首公里":"#378add","头程":"#378add","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
+const STAGE_COLOR={"揽收前":"#378add","仓库处理/交接":"#378add","揽收/首公里":"#378add","头程":"#378add","境内运输":"#378add","到达待取":"#0f6e56","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
 function tab(id,btn){["t1","t2","t3","t4","t5"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
 if(id==="t4")renderT4();
 if(id==="t5")renderT5();
@@ -151,7 +151,7 @@ function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").
 function renderT4(){
   const th=D().thresholds||{};
   const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
-  const STAGE_ORDER=["揽收前","揽收/首公里","出口清关","头程","进口清关","尾程","尾程派送中"];
+  const STAGE_ORDER=["揽收前","仓库处理/交接","揽收/首公里","出口清关","境内运输","头程","进口清关","到达待取","尾程","尾程派送中"];
   const stages=new Set(),countries=new Set(),chs=new Set(),whs=new Set();
   Object.keys(hier).forEach(k=>{const p=k.split("|");if(p[0]&&p[0]!=="*")stages.add(p[0]);if(p[1]&&p[1]!=="*")whs.add(p[1]);if(p[2]&&p[2]!=="*")countries.add(p[2]);if(p[3]&&p[3]!=="*")chs.add(p[3]);});
   Object.keys(direct).forEach(k=>{const p=k.split("×");if(p[0])stages.add(p[0]);if(p[1])countries.add(p[1]);});
@@ -184,7 +184,7 @@ function t4Body(){
   const min=th.hier_min_n||30; const jl=(th.judge_lines||{});
   const g=id=>document.getElementById(id).value;
   const mode=g("t4_mode"),stage=g("t4_stage"),ctry=g("t4_country"),ch=g("t4_ch"),wh=g("t4_wh");
-  const STAGE_ORDER=["揽收前","揽收/首公里","出口清关","头程","进口清关","尾程","尾程派送中"];
+  const STAGE_ORDER=["揽收前","仓库处理/交接","揽收/首公里","出口清关","境内运输","头程","进口清关","到达待取","尾程","尾程派送中"];
   const modes=mode==="all"?["gc","direct"]:[mode];
   const stArr=stage==="*"?STAGE_ORDER.filter(st=>stagesHas(st)):[stage];
   const ctryArr=ctry==="*"?[...new Set([...Object.keys(hier).map(k=>k.split("|")[2]),...Object.keys(direct).map(k=>k.split("×")[1])])].filter(c=>c&&c!=="*"&&c!=="??").sort():[ctry];
@@ -377,14 +377,14 @@ function init(){
     .map(([k,v,st,fl])=>`<div class="card" style="cursor:pointer" onclick="kpiDrill('${fl}')"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
   window.KPI_CLICK=KPI_CLICK;
   const dist=d.stage_dist||{};const mx=Math.max(1,...Object.values(dist));
-  const order=["揽收前","揽收/首公里","头程","出口清关","进口清关","尾程","尾程-待取","其他","异常挂起","无轨迹"];
+  const order=["揽收前","仓库处理/交接","揽收/首公里","出口清关","境内运输","头程","进口清关","到达待取","尾程","尾程-待取","尾程派送中","其他","异常挂起","无轨迹"];
   document.getElementById("dist").innerHTML=Object.entries(dist).sort((a,b)=>order.indexOf(a[0])-order.indexOf(b[0]))
     .map(([k,v])=>`<p class="muted rowclick" onclick="drillStage('${k}')">${k}</p><p class="rowclick" style="font-weight:500;text-align:right;${k==="异常挂起"?"color:var(--red)":""}" onclick="drillStage('${k}')">${v}</p>
       <div class="bar rowclick" onclick="drillStage('${k}')"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
       <p class="hint">${d.summary.total?(v/d.summary.total*100).toFixed(0):0}%</p>`).join("");
   fillFilters();fillOwnerFilter();renderEx();renderWaybillList();
 }
-const NODE_STAGE_JS={"ORDER_CREATION":"揽收前","PRE_INFO":"揽收前","CARRIER_PICKUP":"揽收/首公里","FIRST_MILE_ARRIVE":"揽收/首公里","FIRST_MILE_DEPART":"揽收/首公里","DEPART_CONFIRM_OC":"揽收/首公里","IN_TRANSIT":"头程","IN_TRANSIT_CARRIER":"头程","MAIN_LINE_ARRIVE":"头程","MAIN_LINE_DEPART":"头程","TRANSITHUB_ARRIVE":"头程","ARRIVE_CONFIRM_OC":"头程","ARRIVE_ORIN_CUSTOMS":"出口清关","EXPORT CUSTOMS COMPLETE":"出口清关","EXPORT_CUSTOMS_COMPLETE":"出口清关","CUSTOMS_PROCESSING":"进口清关","CUSTOMS_COMPLETE":"进口清关","CUSTOMS_INSPCTION":"进口清关","CUSTOMS_RELEASE":"进口清关","INBOUND_CCA":"进口清关","PICKUP_CARGO_TERMINAL":"尾程","READY_FOR_OUTBOUND":"尾程","DELIVERY_ATTEMPT":"尾程派送中","REDELIVERY":"尾程派送中","DELIVERY_FAILURE":"投递失败","DELIVERED":"已签收","RETURNED_TO_SENDER":"退件","RETURNED":"退件","ARRANGE_FOR_RETURN":"退件","PACKAGE_EXCEPTION":"异常","TMS_OC":"揽收前","TMS_AS":"揽收前","TMS_PU":"揽收/首公里","TMS_IT":"头程","TMS_UN":"头程","TMS_WPU":"尾程","TMS_OD":"尾程派送中","TMS_FD":"已签收","TMS_DF":"投递失败","TMS_EXCP":"异常","TMS_RT":"退件"};
+const NODE_STAGE_JS={"ORDER_CREATION":"揽收前","PRE_INFO":"揽收前","CARRIER_PICKUP":"揽收/首公里","FIRST_MILE_ARRIVE":"揽收/首公里","FIRST_MILE_DEPART":"揽收/首公里","DEPART_CONFIRM_OC":"揽收/首公里","IN_TRANSIT":"头程","IN_TRANSIT_CARRIER":"头程","MAIN_LINE_ARRIVE":"头程","MAIN_LINE_DEPART":"头程","TRANSITHUB_ARRIVE":"头程","ARRIVE_CONFIRM_OC":"头程","ARRIVE_ORIN_CUSTOMS":"出口清关","EXPORT CUSTOMS COMPLETE":"出口清关","EXPORT_CUSTOMS_COMPLETE":"出口清关","CUSTOMS_PROCESSING":"进口清关","CUSTOMS_COMPLETE":"进口清关","CUSTOMS_INSPCTION":"进口清关","CUSTOMS_RELEASE":"进口清关","INBOUND_CCA":"进口清关","PICKUP_CARGO_TERMINAL":"尾程","READY_FOR_OUTBOUND":"尾程","DELIVERY_ATTEMPT":"尾程派送中","REDELIVERY":"尾程派送中","DELIVERY_FAILURE":"投递失败","DELIVERED":"已签收","RETURNED_TO_SENDER":"退件","RETURNED":"退件","ARRANGE_FOR_RETURN":"退件","PACKAGE_EXCEPTION":"异常","TMS_OC":"揽收前","TMS_AS":"揽收前","TMS_PU":"仓库处理/交接","TMS_IT":"境内运输","TMS_UN":"境内运输","TMS_WPU":"到达待取","TMS_OD":"尾程派送中","TMS_FD":"已签收","TMS_DF":"投递失败","TMS_EXCP":"异常","TMS_RT":"退件"};
 function stageOfEv(e){if(!e)return"无轨迹";if(e.status===50)return"已签收";if(e.status===90)return"退件";const n=(e.node||"").trim();if(NODE_STAGE_JS[n])return NODE_STAGE_JS[n];if(e.status===10)return"揽收前";if(e.status===30)return"尾程-待取";if(e.status===40)return"投递失败";if(e.status===60)return"异常";if(e.status===20)return"头程";return"其他"}
 function waybillStage(w){
   if(w.cached&&[50,90,100].includes(w.status))return"已完成(历史)";
