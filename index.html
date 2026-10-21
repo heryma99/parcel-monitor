@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021161652"></script>
+<script src="data.js?v=20261021164435"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -30,6 +30,7 @@ button.act:hover{background:var(--bg2)}
 .fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--bg2);border-radius:8px;padding:12px;margin-bottom:12px}
 .fgrid label{font-size:12px;color:var(--tx3);display:block;margin-bottom:3px}
 .fgrid select{width:100%}
+  .mselb{display:inline-block;border:0.5px solid var(--bd);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;background:var(--bg);color:var(--tx)}
   .sel{border:0.5px solid var(--bd);border-radius:8px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--tx)}
 .hint{font-size:12px;color:var(--tx3)}
 .muted{color:var(--tx2)}
@@ -236,7 +237,7 @@ function t4Body(){
   <p class="hint" style="margin-top:10px">引擎 ${th.version||""} · 语料：直发84,739单 + 谷仓4,013单 + 妥投70,049单 · 全部规则经全量回放验证 · 回退链：阶段×仓×国×渠道(n≥${min}) → … → 阶段全局；直发与海外仓基线严格隔离</p>`;
   out.innerHTML=html;
 }
-let T5DRAFT=null;
+let T5DRAFT=null;let T5PANEL=null;
 function t5Draft(){
   if(!T5DRAFT){
     const me=localStorage.getItem("pm_staff_v1");
@@ -246,29 +247,15 @@ function t5Draft(){
   }
   return T5DRAFT;
 }
-function t5Commit(){T5DRAFT=null}
+function t5Commit(){T5DRAFT=null;T5PANEL=null}
 function t5Options(){
   const d=D();const chs=new Set(),dests=new Set(),types=new Set();
   (d.exceptions||[]).forEach(e=>{if(e.channel)chs.add(e.channel);if(e.dest)dests.add(e.dest);if(e.type)types.add(e.type);});
   (d.waybills||[]).forEach(w=>{if(w.channel)chs.add(w.channel);});
   return {chs:[...chs].sort(),dests:[...dests].sort(),types:[...types].sort(),
-          biz:["WISCO","SOYAMA","AP","PLBG","佳珞裴","PuHuo","Wholesale-1"],levels:["红","黄","判丢"]};
+          biz:["WISCO","SOYAMA","AP","PLBG","佳珞裴","PuHuo","Wholesale-1"],levels:["红","黄","判丢"],
+          modes:["谷仓","云途直发"]};
 }
-function t5Chips(ri,f,opts,selected,freeLabel){
-  const sel=selected||[];
-  const chips=opts.map(o=>`<span onclick="t5Tgl(${ri},'${f}','${esc(o)}')" style="display:inline-block;margin:2px;padding:2px 9px;border-radius:12px;font-size:12px;cursor:pointer;border:0.5px solid ${sel.includes(o)?"#185FA5":"var(--bd)"};background:${sel.includes(o)?"#E6F1FB":"var(--bg)"};color:${sel.includes(o)?"#185FA5":"var(--tx)"}">${esc(o)}${sel.includes(o)?" ✓":""}</span>`).join("");
-  const customs=sel.filter(x=>!opts.includes(x)).map(o=>`<span onclick="t5Tgl(${ri},'${f}','${esc(o)}')" style="display:inline-block;margin:2px;padding:2px 9px;border-radius:12px;font-size:12px;cursor:pointer;border:0.5px solid #185FA5;background:#E6F1FB;color:#185FA5">${esc(o)} ✓</span>`).join("");
-  const free=freeLabel?`<input class="t5in" style="width:90px;margin:2px" placeholder="${freeLabel}" onkeydown="if(event.key==='Enter'&&this.value.trim()){t5Tgl(${ri},'${f}',this.value.trim());this.value=''}">`:"";
-  return `<div style="margin:2px 0">${chips}${customs}${free}${sel.length?"":'<span class="hint" style="font-size:11px;margin-left:4px">（未选=全部）</span>'}</div>`;
-}
-function t5Tgl(ri,f,val){
-  const r=t5Draft().rules[ri];
-  if(!r[f])r[f]=[];
-  const ix=r[f].indexOf(val);
-  if(ix>=0)r[f].splice(ix,1);else r[f].push(val);
-  renderT5();
-}
-function t5SetF(ri,f,val){t5Draft().rules[ri][f]=val;renderT5();}
 function ruleDesc(r){
   const n=normRule(r);const parts=[];
   if(n.mode)parts.push(n.mode);
@@ -279,6 +266,34 @@ function ruleDesc(r){
   if(n.level.length)parts.push("级别 "+n.level.join("/"));
   return n.who+" → 负责 "+(parts.length?parts.join(" · "):"所有异常（兜底）");
 }
+function t5Panel(ri,f){T5PANEL={ri,f,q:""};renderT5()}
+function t5Close(){T5PANEL=null;renderT5()}
+function t5PanelQ(q){if(T5PANEL)T5PANEL.q=q;renderT5();
+  const el=document.querySelector("#t5_body .mselq");if(el){el.focus();}}
+function t5Tgl(ri,f,val){const r=t5Draft().rules[ri];if(!r[f])r[f]=[];
+  const ix=r[f].indexOf(val);if(ix>=0)r[f].splice(ix,1);else r[f].push(val);
+  T5PANEL={ri,f,q:T5PANEL?T5PANEL.q:""};renderT5();
+  const el=document.querySelector("#t5_body .mselq");if(el)el.focus();}
+function t5SetQuiet(ri,f,v){const r=t5Draft().rules[ri];if(f==="p")r.p=+v||99;else r[f]=v;}
+function t5DD(ri,f,label,opts,sel){
+  const open=T5PANEL&&T5PANEL.ri===ri&&T5PANEL.f===f;
+  const txt=sel.length?(sel.length<=3?sel.join("/"):sel.slice(0,3).join("/")+" 等"+sel.length+"项"):"全部";
+  let h=`<span class="hint" style="grid-column:1">${label}</span><span><span class="mselb" onclick="t5Panel(${ri},'${f}')">${esc(txt)} ▾</span>`;
+  if(open){
+    const q=(T5PANEL.q||"").toUpperCase();
+    const customs=sel.filter(x=>!opts.includes(x));
+    const list=opts.filter(o=>!q||o.toUpperCase().includes(q)).concat(customs.filter(c=>q&&c.toUpperCase().includes(q)));
+    h+=`<div style="grid-column:2;border:0.5px solid var(--bd);border-radius:10px;padding:8px;margin-top:4px;background:var(--bg);max-width:480px">
+      <input class="t5in mselq" style="width:100%" placeholder="搜索；输入新值按回车=添加自定义" value="${esc(T5PANEL.q||"")}"
+        oninput="t5PanelQ(this.value)" onkeydown="if(event.key==='Enter'&&this.value.trim()){t5Tgl(${ri},'${f}',this.value.trim());}">
+      <div style="max-height:190px;overflow:auto;margin-top:4px">
+      ${list.map(o=>`<label style="display:block;padding:3px 4px;font-size:12px;cursor:pointer"><input type="checkbox" ${sel.includes(o)?"checked":""} onchange="t5Tgl(${ri},'${f}','${esc(o)}')"> ${esc(o)}${sel.includes(o)?" ✓":""}</label>`).join("")||'<p class="hint" style="margin:4px">无匹配，回车添加自定义</p>'}
+      </div>
+      <div style="margin-top:4px"><button class="act" onclick="t5Close()">完成</button> <span class="hint">已选 ${sel.length} 项${sel.length?"："+esc(sel.join("/")):"（=全部）"}</span></div>
+    </div>`;
+  }
+  return h+`</span>`;
+}
 function renderT5(){
   const st=t5Draft();const O=t5Options();
   const B=document.getElementById("t5_body");
@@ -286,21 +301,23 @@ function renderT5(){
   const cards=(st.rules||[]).slice().sort((a,b)=>a.p-b.p).map((r)=>{
     const ri=st.rules.indexOf(r);
     return `<div style="border:0.5px solid var(--bd);border-radius:12px;padding:10px 14px;margin-bottom:10px;background:var(--bg2)">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <span class="hint">优先级</span><input class="t5in" style="width:44px" value="${r.p}" onchange="t5SetF(${ri},'p',this.value)">
-      <span class="hint">负责人</span><select class="t5in" onchange="t5SetF(${ri},'who',this.value)">${[...new Set(["未分配",...(st.people||[])])].map(p=>`<option${r.who===p?" selected":""}>${p}</option>`).join("")}</select>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <span class="hint">优先级</span><input class="t5in" style="width:44px" value="${r.p}" onchange="t5SetQuiet(${ri},'p',this.value)">
+      <span class="hint">负责人</span><select class="t5in" onchange="t5SetQuiet(${ri},'who',this.value)">${[...new Set(["未分配",...(st.people||[])])].map(p=>`<option${r.who===p?" selected":""}>${p}</option>`).join("")}</select>
       <span style="flex:1;font-size:12px;color:#185FA5">${esc(ruleDesc(r))}</span>
       <button class="act" onclick="t5DelRule(${ri})">删</button>
     </div>
-    <p class="hint" style="margin:6px 0 0">发货模式</p>${t5Chips(ri,"mode",["谷仓","云途直发"],r.mode?[r.mode]:[],"")}
-    <p class="hint" style="margin:6px 0 0">渠道（多选）</p>${t5Chips(ri,"channel",O.chs,r.channel,"自定义渠道")}
-    <p class="hint" style="margin:6px 0 0">目的国（多选）</p>${t5Chips(ri,"dest",O.dests,r.dest,"自定义国家码")}
-    <p class="hint" style="margin:6px 0 0">业务线（多选·待聚水潭映射后自动打标）</p>${t5Chips(ri,"biz",O.biz,r.biz,"自定义业务线")}
-    <p class="hint" style="margin:6px 0 0">异常类型（多选·可选）</p>${t5Chips(ri,"type",O.types,r.type,"")}
-    <p class="hint" style="margin:6px 0 0">级别（多选·可选）</p>${t5Chips(ri,"level",O.levels,r.level,"")}
-    <div style="margin:6px 0 0"><span class="hint">备注</span> <input class="t5in" style="width:240px" value="${r.note||""}" onchange="t5SetF(${ri},'note',this.value)"></div>
+    <div style="display:grid;grid-template-columns:90px 1fr;gap:4px 6px;align-items:center">
+      ${t5DD(ri,"mode","发货模式",O.modes,r.mode?[r.mode]:[])}
+      ${t5DD(ri,"channel","渠道",O.chs,r.channel)}
+      ${t5DD(ri,"dest","目的国",O.dests,r.dest)}
+      ${t5DD(ri,"biz","业务线",O.biz,r.biz)}
+      ${t5DD(ri,"type","异常类型",O.types,r.type)}
+      ${t5DD(ri,"level","级别",O.levels,r.level)}
+    </div>
+    <div style="margin-top:4px"><span class="hint">备注</span> <input class="t5in" style="width:240px" value="${r.note||""}" onchange="t5SetQuiet(${ri},'note',this.value)"></div>
   </div>`;}).join("");
-  B.innerHTML=`<p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效；② 「导出JSON」发助理即可发布为全团队版本；③ 匹配按优先级升序，首条命中即定负责人，全不命中进「未分配」池；④ 留空（未选任何芯片）=该维度通配。</p>
+  B.innerHTML=`<p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效；② 「导出JSON」发助理即可发布为全团队版本；③ 匹配按优先级升序，首条命中即定负责人，全不命中进「未分配」池；④ 任一维度不选=该维度通配（全部）。</p>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
     <div style="flex:1;min-width:220px"><label class="hint" style="display:block;font-size:11px">人员名单（顿号分隔）</label><input id="t5_people" class="t5in" style="width:100%" value="${peopleStr}"></div>
     <button class="act" onclick="t5Apply()">应用人员</button>
@@ -317,7 +334,7 @@ function renderT5(){
   </div>
   ${cards||'<p class="hint">暂无规则，点「加规则」创建</p>'}
   <button class="act" onclick="t5AddRule()">加规则</button>
-  <p class="hint" style="margin-top:10px">业务线打标：当前全部为「未标注」，待聚水潭订单号→业务线映射接入后自动填充（映射规则也可在业务线芯片里自定义添加）。</p>`;
+  <p class="hint" style="margin-top:10px">业务线打标：当前全部为「未标注」，待聚水潭订单号→业务线映射接入后自动填充。</p>`;
 }
 function t5Test(){
   const wb=(document.getElementById("t5_test").value||"").trim().toUpperCase();
@@ -325,8 +342,8 @@ function t5Test(){
   const o=document.getElementById("t5_test_out");
   if(!ex){o.innerHTML='<span style="color:var(--red)">找不到该运单号</span>';return;}
   const st=t5Draft();const rules=st.rules.map(normRule).sort((a,b)=>a.p-b.p);
-  let hitIdx=-1;
-  for(let i=0;i<rules.length;i++){const r=rules[i];
+  let hit=null;
+  for(const r of rules){
     const mode=(ex.source==="谷仓")?"谷仓":(ex.source==="云途直发"?"云途直发":"");
     if(r.mode&&r.mode!==mode)continue;
     if(r.channel.length&&!r.channel.some(x=>(ex.channel||"").includes(x)))continue;
@@ -334,12 +351,12 @@ function t5Test(){
     if(r.biz.length&&!(ex.biz&&r.biz.includes(ex.biz)))continue;
     if(r.type.length&&!r.type.includes(ex.type))continue;
     if(r.level.length&&!r.level.includes(ex.level))continue;
-    hitIdx=i;break;}
-  o.innerHTML=hitIdx>=0?`<span style="color:#185FA5;font-weight:500">${ex.waybill} → 命中规则${hitIdx+1}：${esc(ruleDesc(rules[hitIdx]))}</span>`:`<span style="color:#A32D2D">${ex.waybill} → 未命中任何规则（进未分配池）</span>`;
+    hit=r;break;}
+  o.innerHTML=hit?`<span style="color:#185FA5;font-weight:500">${ex.waybill} → ${esc(ruleDesc(hit))}</span>`:`<span style="color:#A32D2D">${ex.waybill} → 未命中任何规则（进未分配池）</span>`;
 }
 function t5Collect(){
   const st=t5Draft();
-  st.people=["未分配",...(document.getElementById("t5_people").value.split(/[、,，\\s]+/).map(x=>x.trim()).filter(Boolean))];
+  st.people=["未分配",...(document.getElementById("t5_people").value.split(/[、,，\s]+/).map(x=>x.trim()).filter(Boolean))];
   return st;
 }
 function t5Apply(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));t5Commit();fillOwnerFilter();renderT5();renderEx();}
