@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021165305"></script>
+<script src="data.js?v=20261021165825"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -278,12 +278,12 @@ function t5SetQuiet(ri,f,v){const r=t5Draft().rules[ri];if(f==="p")r.p=+v||99;el
 function t5DD(ri,f,label,opts,sel){
   const open=T5PANEL&&T5PANEL.ri===ri&&T5PANEL.f===f;
   const txt=sel.length?(sel.length<=3?sel.join("/"):sel.slice(0,3).join("/")+" 等"+sel.length+"项"):"全部";
-  let h=`<span class="hint" style="grid-column:1">${label}</span><span><span class="mselb" onclick="t5Panel(${ri},'${f}')">${esc(txt)} ▾</span>`;
+  let h=`<span style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px"><span class="hint">${label}</span><span><span class="mselb" onclick="t5Panel(${ri},'${f}')">${esc(txt)} ▾</span>`;
   if(open){
     const q=(T5PANEL.q||"").toUpperCase();
     const customs=sel.filter(x=>!opts.includes(x));
     const list=opts.filter(o=>!q||o.toUpperCase().includes(q)).concat(customs.filter(c=>q&&c.toUpperCase().includes(q)));
-    h+=`<div style="grid-column:2;border:0.5px solid var(--bd);border-radius:10px;padding:8px;margin-top:4px;background:var(--bg);max-width:480px">
+    h+=`<div style="border:0.5px solid var(--bd);border-radius:10px;padding:8px;margin-top:4px;background:var(--bg);max-width:480px">
       <input class="t5in mselq" style="width:100%" placeholder="搜索；输入新值按回车=添加自定义" value="${esc(T5PANEL.q||"")}"
         oninput="t5PanelQ(this.value)" onkeydown="if(event.key==='Enter'&&this.value.trim()){t5Tgl(${ri},'${f}',this.value.trim());}">
       <div style="max-height:190px;overflow:auto;margin-top:4px">
@@ -307,15 +307,15 @@ function renderT5(){
       <span style="flex:1;font-size:12px;color:#185FA5">${esc(ruleDesc(r))}</span>
       <button class="act" onclick="t5DelRule(${ri})">删</button>
     </div>
-    <div style="display:grid;grid-template-columns:90px 1fr;gap:4px 6px;align-items:center">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
       ${t5DD(ri,"mode","发货模式",O.modes,r.mode?[r.mode]:[])}
       ${t5DD(ri,"channel","渠道",O.chs,r.channel)}
       ${t5DD(ri,"dest","目的国",O.dests,r.dest)}
       ${t5DD(ri,"biz","业务线",O.biz,r.biz)}
       ${t5DD(ri,"type","异常类型",O.types,r.type)}
       ${t5DD(ri,"level","级别",O.levels,r.level)}
+      <span style="display:inline-flex;flex-direction:column;gap:2px"><span class="hint">备注</span><input class="t5in" style="width:150px" value="${r.note||""}" onchange="t5SetQuiet(${ri},'note',this.value)"></span>
     </div>
-    <div style="margin-top:4px"><span class="hint">备注</span> <input class="t5in" style="width:240px" value="${r.note||""}" onchange="t5SetQuiet(${ri},'note',this.value)"></div>
   </div>`;}).join("");
   B.innerHTML=`<p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效；② 「导出JSON」发助理即可发布为全团队版本；③ 匹配按优先级升序，首条命中即定负责人，全不命中进「未分配」池；④ 任一维度不选=该维度通配（全部）。</p>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
