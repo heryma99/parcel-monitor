@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021155129"></script>
+<script src="data.js?v=20261021161652"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -236,51 +236,119 @@ function t4Body(){
   <p class="hint" style="margin-top:10px">引擎 ${th.version||""} · 语料：直发84,739单 + 谷仓4,013单 + 妥投70,049单 · 全部规则经全量回放验证 · 回退链：阶段×仓×国×渠道(n≥${min}) → … → 阶段全局；直发与海外仓基线严格隔离</p>`;
   out.innerHTML=html;
 }
+let T5DRAFT=null;
+function t5Draft(){
+  if(!T5DRAFT){
+    const me=localStorage.getItem("pm_staff_v1");
+    T5DRAFT=me?JSON.parse(me):(D().staff||{people:["未分配"],rules:[]});
+    T5DRAFT.rules=(T5DRAFT.rules||[]).map(normRule);
+    T5DRAFT.people=T5DRAFT.people||["未分配"];
+  }
+  return T5DRAFT;
+}
+function t5Commit(){T5DRAFT=null}
+function t5Options(){
+  const d=D();const chs=new Set(),dests=new Set(),types=new Set();
+  (d.exceptions||[]).forEach(e=>{if(e.channel)chs.add(e.channel);if(e.dest)dests.add(e.dest);if(e.type)types.add(e.type);});
+  (d.waybills||[]).forEach(w=>{if(w.channel)chs.add(w.channel);});
+  return {chs:[...chs].sort(),dests:[...dests].sort(),types:[...types].sort(),
+          biz:["WISCO","SOYAMA","AP","PLBG","佳珞裴","PuHuo","Wholesale-1"],levels:["红","黄","判丢"]};
+}
+function t5Chips(ri,f,opts,selected,freeLabel){
+  const sel=selected||[];
+  const chips=opts.map(o=>`<span onclick="t5Tgl(${ri},'${f}','${esc(o)}')" style="display:inline-block;margin:2px;padding:2px 9px;border-radius:12px;font-size:12px;cursor:pointer;border:0.5px solid ${sel.includes(o)?"#185FA5":"var(--bd)"};background:${sel.includes(o)?"#E6F1FB":"var(--bg)"};color:${sel.includes(o)?"#185FA5":"var(--tx)"}">${esc(o)}${sel.includes(o)?" ✓":""}</span>`).join("");
+  const customs=sel.filter(x=>!opts.includes(x)).map(o=>`<span onclick="t5Tgl(${ri},'${f}','${esc(o)}')" style="display:inline-block;margin:2px;padding:2px 9px;border-radius:12px;font-size:12px;cursor:pointer;border:0.5px solid #185FA5;background:#E6F1FB;color:#185FA5">${esc(o)} ✓</span>`).join("");
+  const free=freeLabel?`<input class="t5in" style="width:90px;margin:2px" placeholder="${freeLabel}" onkeydown="if(event.key==='Enter'&&this.value.trim()){t5Tgl(${ri},'${f}',this.value.trim());this.value=''}">`:"";
+  return `<div style="margin:2px 0">${chips}${customs}${free}${sel.length?"":'<span class="hint" style="font-size:11px;margin-left:4px">（未选=全部）</span>'}</div>`;
+}
+function t5Tgl(ri,f,val){
+  const r=t5Draft().rules[ri];
+  if(!r[f])r[f]=[];
+  const ix=r[f].indexOf(val);
+  if(ix>=0)r[f].splice(ix,1);else r[f].push(val);
+  renderT5();
+}
+function t5SetF(ri,f,val){t5Draft().rules[ri][f]=val;renderT5();}
+function ruleDesc(r){
+  const n=normRule(r);const parts=[];
+  if(n.mode)parts.push(n.mode);
+  if(n.biz.length)parts.push("业务线 "+n.biz.join("/"));
+  if(n.channel.length)parts.push("渠道含 "+n.channel.join("/"));
+  if(n.dest.length)parts.push("国家 "+n.dest.join("/"));
+  if(n.type.length)parts.push("类型 "+n.type.join("/"));
+  if(n.level.length)parts.push("级别 "+n.level.join("/"));
+  return n.who+" → 负责 "+(parts.length?parts.join(" · "):"所有异常（兜底）");
+}
 function renderT5(){
-  const st=t5Staff();
+  const st=t5Draft();const O=t5Options();
   const B=document.getElementById("t5_body");
   const peopleStr=(st.people||[]).filter(p=>p&&p!=="未分配").join("、");
-  const ruleRows=(st.rules||[]).slice().sort((a,b)=>(a.p||0)-(b.p||0)).map((r,i)=>`<tr>
-    <td><input class="t5in" style="width:44px" data-f="p" data-i="${i}" value="${r.p??i+1}"></td>
-    <td><select class="t5in" data-f="who" data-i="${i}">${["未分配",...(st.people||[])].filter((x,ix,arr)=>x&&arr.indexOf(x)===ix).map(p=>`<option${r.who===p?" selected":""}>${p}</option>`).join("")}</select></td>
-    <td><select class="t5in" data-f="mode" data-i="${i}"><option value=""${!r.mode?" selected":""}>通配</option><option${r.mode==="谷仓"?" selected":""}>谷仓</option><option${r.mode==="云途直发"?" selected":""}>云途直发</option></select></td>
-    <td><input class="t5in" style="width:110px" data-f="channel" data-i="${i}" value="${r.channel||""}" placeholder="留空=通配"></td>
-    <td><input class="t5in" style="width:56px" data-f="dest" data-i="${i}" value="${r.dest||""}" placeholder="留空=通配"></td>
-    <td><input class="t5in" style="width:110px" data-f="type" data-i="${i}" value="${r.type||""}" placeholder="留空=通配"></td>
-    <td><input class="t5in" style="width:40px" data-f="level" data-i="${i}" value="${r.level||""}" placeholder="通配"></td>
-    <td><input class="t5in" style="width:140px" data-f="note" data-i="${i}" value="${r.note||""}"></td>
-    <td><button class="act" onclick="t5DelRule(${i})">删</button></td></tr>`).join("");
-  B.innerHTML=`
-  <p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效（localStorage）；② 点「导出JSON」把配置文件发给助理，即可发布为全团队共用版本；③ 匹配规则按优先级升序，首条命中即定负责人，全不命中进「未分配」池。</p>
+  const cards=(st.rules||[]).slice().sort((a,b)=>a.p-b.p).map((r)=>{
+    const ri=st.rules.indexOf(r);
+    return `<div style="border:0.5px solid var(--bd);border-radius:12px;padding:10px 14px;margin-bottom:10px;background:var(--bg2)">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <span class="hint">优先级</span><input class="t5in" style="width:44px" value="${r.p}" onchange="t5SetF(${ri},'p',this.value)">
+      <span class="hint">负责人</span><select class="t5in" onchange="t5SetF(${ri},'who',this.value)">${[...new Set(["未分配",...(st.people||[])])].map(p=>`<option${r.who===p?" selected":""}>${p}</option>`).join("")}</select>
+      <span style="flex:1;font-size:12px;color:#185FA5">${esc(ruleDesc(r))}</span>
+      <button class="act" onclick="t5DelRule(${ri})">删</button>
+    </div>
+    <p class="hint" style="margin:6px 0 0">发货模式</p>${t5Chips(ri,"mode",["谷仓","云途直发"],r.mode?[r.mode]:[],"")}
+    <p class="hint" style="margin:6px 0 0">渠道（多选）</p>${t5Chips(ri,"channel",O.chs,r.channel,"自定义渠道")}
+    <p class="hint" style="margin:6px 0 0">目的国（多选）</p>${t5Chips(ri,"dest",O.dests,r.dest,"自定义国家码")}
+    <p class="hint" style="margin:6px 0 0">业务线（多选·待聚水潭映射后自动打标）</p>${t5Chips(ri,"biz",O.biz,r.biz,"自定义业务线")}
+    <p class="hint" style="margin:6px 0 0">异常类型（多选·可选）</p>${t5Chips(ri,"type",O.types,r.type,"")}
+    <p class="hint" style="margin:6px 0 0">级别（多选·可选）</p>${t5Chips(ri,"level",O.levels,r.level,"")}
+    <div style="margin:6px 0 0"><span class="hint">备注</span> <input class="t5in" style="width:240px" value="${r.note||""}" onchange="t5SetF(${ri},'note',this.value)"></div>
+  </div>`;}).join("");
+  B.innerHTML=`<p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效；② 「导出JSON」发助理即可发布为全团队版本；③ 匹配按优先级升序，首条命中即定负责人，全不命中进「未分配」池；④ 留空（未选任何芯片）=该维度通配。</p>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
-    <div style="flex:1;min-width:220px"><label class="hint" style="display:block;font-size:11px">人员名单（顿号分隔，未分配为系统保留）</label>
-      <input id="t5_people" class="t5in" style="width:100%" value="${peopleStr}" placeholder="如：张三、李四、王五"></div>
+    <div style="flex:1;min-width:220px"><label class="hint" style="display:block;font-size:11px">人员名单（顿号分隔）</label><input id="t5_people" class="t5in" style="width:100%" value="${peopleStr}"></div>
     <button class="act" onclick="t5Apply()">应用人员</button>
     <button class="act" onclick="t5AddRule()">加规则</button>
     <button class="act" onclick="t5Save()">保存（本机生效）</button>
     <button class="act" onclick="t5Export()">导出JSON（发助理发布）</button>
     <button class="act" onclick="t5Reset()">恢复内置版本</button>
   </div>
-  <table><thead><tr><th>优先级</th><th>负责人</th><th>发货模式</th><th>渠道</th><th>目的国</th><th>异常类型</th><th>级别</th><th>备注</th><th></th></tr></thead><tbody>${ruleRows}</tbody></table>
-  <p class="hint" style="margin-top:10px">匹配维度说明：发货模式=谷仓/云途直发；渠道支持包含匹配（如填 GC 即命中 GC_PARCEL）；「未分配」单在异常清单中标红，可在负责人筛选里一键查看认领情况。</p>`;
+  <div style="border:0.5px solid var(--bd);border-radius:12px;padding:10px 14px;margin-bottom:12px;background:var(--bg2)">
+    <p style="font-weight:500;margin:0 0 6px">规则试金石：输入运单号，看命中哪条规则</p>
+    <input id="t5_test" class="t5in" style="width:220px" placeholder="运单号">
+    <button class="act" onclick="t5Test()">试</button>
+    <span id="t5_test_out" style="margin-left:10px;font-size:12px"></span>
+  </div>
+  ${cards||'<p class="hint">暂无规则，点「加规则」创建</p>'}
+  <button class="act" onclick="t5AddRule()">加规则</button>
+  <p class="hint" style="margin-top:10px">业务线打标：当前全部为「未标注」，待聚水潭订单号→业务线映射接入后自动填充（映射规则也可在业务线芯片里自定义添加）。</p>`;
+}
+function t5Test(){
+  const wb=(document.getElementById("t5_test").value||"").trim().toUpperCase();
+  const ex=(D().exceptions||[]).find(e=>e.waybill===wb)||((D().exceptions||[]).find(e=>(e.waybill||"").includes(wb)));
+  const o=document.getElementById("t5_test_out");
+  if(!ex){o.innerHTML='<span style="color:var(--red)">找不到该运单号</span>';return;}
+  const st=t5Draft();const rules=st.rules.map(normRule).sort((a,b)=>a.p-b.p);
+  let hitIdx=-1;
+  for(let i=0;i<rules.length;i++){const r=rules[i];
+    const mode=(ex.source==="谷仓")?"谷仓":(ex.source==="云途直发"?"云途直发":"");
+    if(r.mode&&r.mode!==mode)continue;
+    if(r.channel.length&&!r.channel.some(x=>(ex.channel||"").includes(x)))continue;
+    if(r.dest.length&&!r.dest.includes(ex.dest))continue;
+    if(r.biz.length&&!(ex.biz&&r.biz.includes(ex.biz)))continue;
+    if(r.type.length&&!r.type.includes(ex.type))continue;
+    if(r.level.length&&!r.level.includes(ex.level))continue;
+    hitIdx=i;break;}
+  o.innerHTML=hitIdx>=0?`<span style="color:#185FA5;font-weight:500">${ex.waybill} → 命中规则${hitIdx+1}：${esc(ruleDesc(rules[hitIdx]))}</span>`:`<span style="color:#A32D2D">${ex.waybill} → 未命中任何规则（进未分配池）</span>`;
 }
 function t5Collect(){
-  const st=t5Staff();
-  st.people=["未分配",...(document.getElementById("t5_people").value.split(/[、,，\s]+/).map(x=>x.trim()).filter(Boolean))];
-  const rules=[];
-  document.querySelectorAll("#t5_body tbody tr").forEach(tr=>{
-    const g=f=>{const el=tr.querySelector(`[data-f="${f}"]`);return el?el.value.trim():""};
-    rules.push({p:+(g("p")||99),who:g("who")||"未分配",mode:g("mode"),channel:g("channel"),dest:g("dest"),type:g("type"),level:g("level"),note:g("note")});
-  });
-  st.rules=rules;return st;
+  const st=t5Draft();
+  st.people=["未分配",...(document.getElementById("t5_people").value.split(/[、,，\\s]+/).map(x=>x.trim()).filter(Boolean))];
+  return st;
 }
-function t5Apply(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));fillOwnerFilter();renderT5();renderEx();renderKPI&&renderKPI();}
-function t5Save(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));alert("已保存，本浏览器即时生效。要全团队生效请点「导出JSON」发给助理发布。");renderT5();}
-function t5AddRule(){const st=t5Collect();st.rules.push({p:st.rules.length+1,who:"未分配",mode:"",channel:"",dest:"",type:"",level:"",note:""});localStorage.setItem("pm_staff_v1",JSON.stringify(st));renderT5();}
-function t5DelRule(i){const st=t5Collect();st.rules.splice(i,1);st.rules.forEach((r,ix)=>r.p=ix+1);localStorage.setItem("pm_staff_v1",JSON.stringify(st));renderT5();fillOwnerFilter();renderEx();}
-function t5Export(){const st=t5Staff();const blob=new Blob([JSON.stringify(st,null,1)],{type:"application/json"});
+function t5Apply(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));t5Commit();fillOwnerFilter();renderT5();renderEx();}
+function t5Save(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));t5Commit();alert("已保存，本浏览器即时生效。要全团队生效请「导出JSON」发助理发布。");renderT5();}
+function t5AddRule(){const st=t5Draft();st.rules.push({p:st.rules.length+1,who:"未分配",mode:"",channel:[],dest:[],type:[],biz:[],level:[],note:""});renderT5();}
+function t5DelRule(ri){const st=t5Draft();st.rules.splice(ri,1);st.rules.forEach((r,ix)=>r.p=ix+1);renderT5();fillOwnerFilter();renderEx();}
+function t5Export(){const st=t5Collect();const blob=new Blob([JSON.stringify(st,null,1)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="staff.json";a.click();}
-function t5Reset(){localStorage.removeItem("pm_staff_v1");renderT5();fillOwnerFilter();renderEx();}
+function t5Reset(){localStorage.removeItem("pm_staff_v1");t5Commit();renderT5();fillOwnerFilter();renderEx();}
 function init(){
   const d=D();
   document.getElementById("scope").textContent=d.meta.p1_scope||"P1";
@@ -374,15 +442,20 @@ function filtered(){
     return true;});
 }
 function t5Staff(){const me=localStorage.getItem("pm_staff_v1");if(me){try{return JSON.parse(me)}catch(e){}}return (D().staff)||{people:["未分配"],rules:[]};}
+function normRule(r){
+  const arr=x=>x==null?[]:(Array.isArray(x)?x.map(v=>String(v).trim()).filter(Boolean):[String(x).trim()]);
+  return {p:+(r.p||99),who:r.who||"未分配",mode:r.mode||"",channel:arr(r.channel),dest:arr(r.dest),type:arr(r.type),biz:arr(r.biz),level:arr(r.level),note:r.note||""};
+}
 function ownerOf(ex){
   const st=t5Staff();const mode=(ex.source==="谷仓")?"谷仓":(ex.source==="云途直发"?"云途直发":"");
-  const rules=(st.rules||[]).slice().sort((a,b)=>(a.p||0)-(b.p||0));
+  const rules=(st.rules||[]).map(normRule).sort((a,b)=>a.p-b.p);
   for(const r of rules){
     if(r.mode&&r.mode!==mode)continue;
-    if(r.channel&&!(ex.channel||"").includes(r.channel))continue;
-    if(r.dest&&ex.dest!==r.dest)continue;
-    if(r.type&&ex.type!==r.type)continue;
-    if(r.level&&ex.level!==r.level)continue;
+    if(r.channel.length&&!r.channel.some(x=>(ex.channel||"").includes(x)))continue;
+    if(r.dest.length&&!r.dest.includes(ex.dest))continue;
+    if(r.biz.length&&!(ex.biz&&r.biz.includes(ex.biz)))continue;
+    if(r.type.length&&!r.type.includes(ex.type))continue;
+    if(r.level.length&&!r.level.includes(ex.level))continue;
     return r.who||"未分配";
   }
   return "未分配";
