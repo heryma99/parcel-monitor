@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>小包异常监控 · Parcel Monitor</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
-<script src="data.js?v=20261021174445"></script>
+<script src="data.js?v=20261022100113"></script>
 <style>
 :root{--bg:#fff;--bg2:#f6f5f2;--tx:#1a1a1a;--tx2:#6b6a66;--tx3:#9b9a95;--bd:#e5e4df;--red:#a32d2d;--redbg:#fcebeb;--amb:#854f0b;--ambbg:#faeeda;--grn:#0f6e56;--grnbg:#e1f5ee;--blu:#185fa5;--blubg:#e6f1fb}
 *{box-sizing:border-box;margin:0}
@@ -63,7 +63,9 @@ button.act:hover{background:var(--bg2)}
 <div id="app" class="wrap hidden">
   <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
     <h1>小包异常监控看板</h1>
-    <div><span class="badge b-blu" id="scope"></span> <span class="badge b-gray" id="cutoff"></span></div>
+    <div style="display:flex;gap:6px;align-items:center"><span class="badge b-blu" id="scope"></span> <span class="badge b-gray" id="cutoff"></span>
+      <input id="lookup" placeholder="查件：输入运单号回车" style="width:200px;border:0.5px solid var(--bd);border-radius:8px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--tx)" onkeydown="if(event.key==='Enter')lookupWb(this.value)">
+    </div>
   </div>
   <div class="tabs">
     <button class="on" data-t="t1" onclick="tab('t1',this)">监控总览</button>
@@ -112,8 +114,23 @@ button.act:hover{background:var(--bg2)}
     </div>
   </div>
   <div id="t3" class="hidden">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px" id="wlist"></div>
-    <div id="wdetail"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+      <div><label class="hint" style="display:block;font-size:11px">运单号搜索</label><input id="wl_q" class="t5in" style="width:180px" placeholder="片段即可" oninput="WL.page=1;renderWaybillList()"></div>
+      <div><label class="hint" style="display:block;font-size:11px">来源</label><select id="wl_source" class="sel" onchange="WL.page=1;renderWaybillList()"><option value="">全部</option><option>谷仓</option><option>云途直发</option></select></div>
+      <div><label class="hint" style="display:block;font-size:11px">国家</label><select id="wl_dest" class="sel" onchange="WL.page=1;renderWaybillList()"><option value="">全部</option></select></div>
+      <div><label class="hint" style="display:block;font-size:11px">当前站</label><select id="wl_stage" class="sel" onchange="WL.page=1;renderWaybillList()"><option value="">全部</option></select></div>
+      <div><label class="hint" style="display:block;font-size:11px">负责人</label><select id="wl_owner" class="sel" onchange="WL.page=1;renderWaybillList()"><option value="">全部</option><option value="__un__">未分配</option></select></div>
+    </div>
+    <div style="overflow-x:auto"><table id="wltab"><thead><tr>
+      <th>运单号</th><th>来源</th><th>国家</th><th>当前站</th><th>状态</th><th>最后事件</th><th>负责人</th><th>轨迹</th>
+    </tr></thead><tbody></tbody></table></div>
+    <div id="wlpage" style="margin-top:8px"></div>
+  </div>
+  <div id="wdrawer" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:60">
+    <div style="position:absolute;right:0;top:0;bottom:0;width:min(560px,92vw);background:var(--bg);overflow:auto;padding:18px 20px;box-shadow:-8px 0 24px rgba(0,0,0,.18)">
+      <div style="display:flex;justify-content:flex-end"><button class="act" onclick="document.getElementById('wdrawer').style.display='none'">关闭 ✕</button></div>
+      <div id="wdbody"></div>
+    </div>
   </div>
   <div id="t4" class="hidden" id2="t4">
     <div id="t4_body"></div>
@@ -385,6 +402,9 @@ function init(){
       <div class="bar rowclick" onclick="drillStage('${k}')"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
       <p class="hint">${d.summary.total?(v/d.summary.total*100).toFixed(0):0}%</p>`).join("");
   fillFilters();fillOwnerFilter();renderEx();renderWaybillList();
+    const bscript=document.querySelector('script[src*="data.js?v=20261022100113"]');
+  const bv=bscript?(bscript.src.split("v=")[1]||""):"";
+  document.getElementById("buildinfo").textContent="页面构建 v="+(bv||"—")+" · 数据截至 "+((D().meta||{}).cutoff||"—")+" · 若页面样式与摘要不符请强刷(Ctrl+F5)";
 }
 const NODE_STAGE_JS={"ORDER_CREATION":"揽收前","PRE_INFO":"揽收前","CARRIER_PICKUP":"揽收/首公里","FIRST_MILE_ARRIVE":"揽收/首公里","FIRST_MILE_DEPART":"揽收/首公里","DEPART_CONFIRM_OC":"揽收/首公里","IN_TRANSIT":"头程","IN_TRANSIT_CARRIER":"头程","MAIN_LINE_ARRIVE":"头程","MAIN_LINE_DEPART":"头程","TRANSITHUB_ARRIVE":"头程","ARRIVE_CONFIRM_OC":"头程","ARRIVE_ORIN_CUSTOMS":"出口清关","EXPORT CUSTOMS COMPLETE":"出口清关","EXPORT_CUSTOMS_COMPLETE":"出口清关","CUSTOMS_PROCESSING":"进口清关","CUSTOMS_COMPLETE":"进口清关","CUSTOMS_INSPCTION":"进口清关","CUSTOMS_RELEASE":"进口清关","INBOUND_CCA":"进口清关","PICKUP_CARGO_TERMINAL":"尾程","READY_FOR_OUTBOUND":"尾程","DELIVERY_ATTEMPT":"尾程派送中","REDELIVERY":"尾程派送中","DELIVERY_FAILURE":"投递失败","DELIVERED":"已签收","RETURNED_TO_SENDER":"退件","RETURNED":"退件","ARRANGE_FOR_RETURN":"退件","PACKAGE_EXCEPTION":"异常","TMS_OC":"揽收前","TMS_AS":"揽收前","TMS_PU":"仓库处理/交接","TMS_IT":"境内运输","TMS_UN":"境内运输","TMS_WPU":"到达待取","TMS_OD":"尾程派送中","TMS_FD":"已签收","TMS_DF":"投递失败","TMS_EXCP":"异常","TMS_RT":"退件"};
 function stageOfEv(e){if(!e)return"无轨迹";if(e.status===50)return"已签收";if(e.status===90)return"退件";const n=(e.node||"").trim();if(NODE_STAGE_JS[n])return NODE_STAGE_JS[n];if(e.status===10)return"揽收前";if(e.status===30)return"尾程-待取";if(e.status===40)return"投递失败";if(e.status===60)return"异常";if(e.status===20)return"头程";return"其他"}
@@ -402,7 +422,7 @@ function drillStage(stage){
     <td>${w.waybill}</td><td>${w.channel||"—"}</td><td>${w.dest||"—"}</td>
     <td>${w.status===50?"已签收":w.status===90?"退回":w.status===60?"异常":w.status===40?"投递失败":w.status===10?"预报":"在途"}</td>
     <td class="muted">${(w.last_desc||(w.events&&w.events.length?w.events[w.events.length-1].desc:"")||"—").slice(0,50)}</td>
-    <td><button class="act" onclick="document.getElementById('drill').style.display='none';showW(${i});tab('t3')">轨迹</button></td></tr>`).join("")
+    <td><button class="act" onclick="document.getElementById('drill').style.display='none';openWDrawer(${i})">轨迹</button></td></tr>`).join("")
     ||'<tr><td colspan="6" class="hint">无运单</td></tr>';
   document.getElementById("drill").style.display="flex";
 }
@@ -413,7 +433,7 @@ function kpiDrill(fl){
     document.querySelector("#drill_tab tbody").innerHTML=ws.slice(0,300).map(({w,i})=>`<tr>
       <td>${w.waybill}</td><td>${w.channel||"—"}</td><td>${w.dest||"—"}</td>
       <td>${waybillStage(w)}</td><td class="muted">${(w.last_desc||"—").slice(0,50)}</td>
-      <td><button class="act" onclick="document.getElementById('drill').style.display='none';showW(${i});tab('t3')">轨迹</button></td></tr>`).join("");
+      <td><button class="act" onclick="document.getElementById('drill').style.display='none';openWDrawer(${i})">轨迹</button></td></tr>`).join("");
     document.getElementById("drill").style.display="flex";return;}
   if(fl==="__mine__"){const me=localStorage.getItem("pm_me")||"";tab("t2");document.getElementById("f_owner").value=me;renderEx();return;}
   tab("t2");document.getElementById("f_level").value=fl;
@@ -506,7 +526,7 @@ function renderEx(){
   });
   tb.innerHTML=rows.map(({e,o})=>`<tr>
     <td><span class="badge ${LV[e.level]||"b-gray"}">${e.level}</span></td>
-    <td>${e.waybill}</td><td class="muted">${e.source||"—"}</td>
+    <td style="font-family:monospace;cursor:pointer;color:#185FA5" onclick="openWDrawerByWb('${e.waybill}')">${e.waybill}</td><td class="muted">${e.source||"—"}</td>
     <td>${o==="未分配"?'<span style="color:var(--red);font-weight:500">未分配</span>':o}</td>
     <td>${e.channel||"—"}</td><td>${e.dest||"—"}</td>
     <td>${e.type}</td><td class="muted">${e.basis}</td><td>${e.responsible}</td>
@@ -536,16 +556,73 @@ function exportExcel(mode){
     a.download="异常清单_"+(D().meta.generated_at||"").slice(0,10)+".xlsx";a.click()});
 }
 let curW=null;
-function renderWaybillList(){
-  const d=D();const ws=d.waybills||[];
-  document.getElementById("wlist").innerHTML=ws.map((w,i)=>`<button class="act" onclick="showW(${i})">${w.waybill}</button>`).join("")||'<span class="hint">底表为空：请通过对账单导入运单号（pipeline/底表.csv）</span>';
-  if(ws.length)showW(0);
+const WL={page:1,size:50};
+function wlFiltered(){
+  const d=D();const g=id=>document.getElementById(id).value;
+  const q=(g("wl_q")||"").trim().toUpperCase();
+  return (d.waybills||[]).map((w,i)=>({w,i})).filter(({w})=>{
+    if(q&&!(w.waybill||"").includes(q))return false;
+    if(g("wl_source")&&(w.source||"")!==g("wl_source"))return false;
+    if(g("wl_dest")&&w.dest!==g("wl_dest"))return false;
+    if(g("wl_stage")&&waybillStage(w)!==g("wl_stage"))return false;
+    if(g("wl_owner")){const o=ownerOf(w);if(g("wl_owner")==="__un__"?o!=="未分配":o!==g("wl_owner"))return false;}
+    return true;
+  });
 }
-function showW(i){
-  const w=D().waybills[i];if(!w)return;curW=w;
+function renderWaybillList(){
+  const d=D();const rows=wlFiltered();
+  const g=id=>document.getElementById(id).value;
+  // 填充国家/阶段下拉（一次）
+  const ds=[...new Set((d.waybills||[]).map(w=>w.dest).filter(Boolean))].sort();
+  const dsel=document.getElementById("wl_dest");
+  if(dsel.options.length<=1){dsel.innerHTML='<option value="">全部</option>'+ds.map(c=>`<option>${c}</option>`).join("");}
+  const ssel=document.getElementById("wl_stage");
+  if(ssel.options.length<=1){const sts=[...new Set((d.waybills||[]).map(w=>waybillStage(w)))].sort();
+    ssel.innerHTML='<option value="">全部</option>'+sts.map(x=>`<option>${x}</option>`).join("");}
+  const osel=document.getElementById("wl_owner");
+  if(osel.options.length<=2){const owners=[...new Set((d.waybills||[]).map(w=>ownerOf(w)))].sort();
+    osel.innerHTML='<option value="">全部</option><option value="__un__">未分配</option>'+owners.filter(o=>o!=="未分配").map(o=>`<option>${o}</option>`).join("");}
+  const pages=Math.max(1,Math.ceil(rows.length/WL.size));
+  if(WL.page>pages)WL.page=pages;
+  const slice=rows.slice((WL.page-1)*WL.size,WL.page*WL.size);
+  document.querySelector("#wltab tbody").innerHTML=slice.map(({w,i})=>{
+    const o=ownerOf(w);
+    return `<tr>
+      <td style="font-family:monospace">${w.waybill}</td>
+      <td class="muted">${w.source||"—"}</td><td>${w.dest||"—"}</td>
+      <td>${waybillStage(w)}</td>
+      <td>${w.status===50?"已签收":w.status===90?"退回":w.status===60?"异常":w.status===40?"投递失败":w.status===10?"预报":"在途"}</td>
+      <td class="muted" style="max-width:260px">${(w.last_desc||(w.events&&w.events.length?w.events[w.events.length-1].desc:"")||"—").slice(0,46)}</td>
+      <td>${o==="未分配"?'<span style="color:var(--red)">未分配</span>':o}</td>
+      <td><button class="act" onclick="openWDrawer(${i})">轨迹</button></td></tr>`;}).join("")
+    ||'<tr><td colspan="8" class="hint">无匹配运单</td></tr>';
+  document.getElementById("wlpage").innerHTML=`<span class="hint">命中 ${rows.length} 单 · 第 ${WL.page}/${pages} 页</span>
+    <button class="act" onclick="WL.page=1;renderWaybillList()" ${WL.page<=1?"disabled":""}>«</button>
+    <button class="act" onclick="WL.page--;renderWaybillList()" ${WL.page<=1?"disabled":""}>‹</button>
+    <button class="act" onclick="WL.page++;renderWaybillList()" ${WL.page>=pages?"disabled":""}>›</button>
+    <button class="act" onclick="WL.page=${pages};renderWaybillList()" ${WL.page>=pages?"disabled":""}>»</button>`;
+}
+function openWDrawerByWb(wb){const d=D();const i=(d.waybills||[]).findIndex(w=>w.waybill===wb);if(i>=0)openWDrawer(i);}
+function lookupWb(v){
+  const q=(v||"").trim().toUpperCase();if(!q)return;
+  const d=D();const i=(d.waybills||[]).findIndex(w=>w.waybill===q);
+  if(i>=0){openWDrawer(i);return;}
+  const j=(d.waybills||[]).findIndex(w=>(w.waybill||"").includes(q));
+  if(j>=0){openWDrawer(j);return;}
+  const ex=(d.exceptions||[]).find(e=>(e.waybill||"").includes(q));
+  if(ex){const k=(d.waybills||[]).findIndex(w=>w.waybill===ex.waybill);if(k>=0){openWDrawer(k);return;}}
+  document.getElementById("wdbody").innerHTML='<p class="hint">未找到运单号包含 '+q+' 的运单</p>';
+  document.getElementById("wdrawer").style.display="block";
+}
+function openWDrawer(i){const w=(D().waybills||[])[i];if(!w)return;
+  document.getElementById("wdbody").innerHTML=buildWHTML(w);
+  document.getElementById("wdrawer").style.display="block";}
+function showW(i){openWDrawer(i);}
+function buildWHTML(w){
+  curW=w;
   const evs=(w.events||[]).map(e=>`<div class="ev"><p class="t">${e.t} <span class="n">· ${e.node||""}${e.loc?" · "+e.loc:""}</span></p><p class="d">${e.desc||""}${e.abnormal&&e.abnormal.length?" · 异常码:"+e.abnormal.join(";"):""}</p></div>`).join("");
   const ex=(w.exceptions||[]).map(e=>`<span class="badge ${LV[e.level]||"b-gray"}" style="margin-right:6px">${e.type} · ${e.basis}</span>`).join("");
-  document.getElementById("wdetail").innerHTML=`
+  return `
     <div style="border:0.5px solid var(--bd);border-radius:12px;padding:16px 20px">
       <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <p style="font-weight:500;font-size:14px">${w.waybill} → ${w.dest||"?"} ${w.channel?"· "+w.channel:""}</p>
@@ -560,5 +637,6 @@ function showW(i){
 }
 window.addEventListener("DOMContentLoaded",()=>{if(sessionStorage.getItem("pm_ok")==="1"&&!document.getElementById("app").classList.contains("hidden"))init()});
 </script>
+<p class="hint" id="buildinfo" style="margin:10px 6px"></p>
 </body>
 </html>
