@@ -1,0 +1,486 @@
+
+const GATE_HASH="9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0";
+async function sha256(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+async function tryGate(){if(await sha256(document.getElementById("pw").value)===GATE_HASH){sessionStorage.setItem("pm_ok","1");document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");init()}else{document.getElementById("gerr").textContent="口令不正确"}}
+if(sessionStorage.getItem("pm_ok")==="1"){document.getElementById("gate").classList.add("hidden");document.getElementById("app").classList.remove("hidden");window.addEventListener("DOMContentLoaded",init)}
+const D=()=>window.PARCEL_DATA||{meta:{},summary:{},stage_dist:{},waybills:[],exceptions:[],thresholds:{}};
+const LV={ "红":"b-red","黄":"b-amb","判丢":"b-gray","提醒":"b-gray"};
+const STAGE_COLOR={"揽收前":"#378add","仓库处理/交接":"#378add","揽收/首公里":"#378add","头程":"#378add","境内运输":"#378add","到达待取":"#0f6e56","出口清关":"#378add","进口清关":"#378add","尾程":"#0f6e56","尾程-待取":"#0f6e56","其他":"#888780","异常挂起":"#a32d2d","无轨迹":"#888780"};
+function tab(id,btn){["t1","t2","t3","t4","t5"].forEach(t=>document.getElementById(t).classList.toggle("hidden",t!==id));
+if(id==="t4")renderT4();
+if(id==="t5")renderT5();
+  const bs=document.querySelectorAll(".tabs button");
+  if(!btn)btn=[...bs].find(b=>b.dataset.t===id);
+  bs.forEach(b=>{const on=b.dataset.t===id;b.classList.toggle("on",on)})}
+function esc(s){return String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function renderT4(){
+  const th=D().thresholds||{};
+  const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
+  const STAGE_ORDER=["揽收前","仓库处理/交接","揽收/首公里","出口清关","境内运输","头程","进口清关","到达待取","尾程","尾程派送中"];
+  const stages=new Set(),countries=new Set(),chs=new Set(),whs=new Set();
+  Object.keys(hier).forEach(k=>{const p=k.split("|");if(p[0]&&p[0]!=="*")stages.add(p[0]);if(p[1]&&p[1]!=="*")whs.add(p[1]);if(p[2]&&p[2]!=="*")countries.add(p[2]);if(p[3]&&p[3]!=="*")chs.add(p[3]);});
+  Object.keys(direct).forEach(k=>{const p=k.split("×");if(p[0])stages.add(p[0]);if(p[1])countries.add(p[1]);});
+  const stArr=[...stages].sort((a,b)=>STAGE_ORDER.indexOf(a)-STAGE_ORDER.indexOf(b));
+  const B=document.getElementById("t4_body");
+  B.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+    <div><label class="hint" style="display:block;font-size:11px">发货模式</label><select id="t4_mode" onchange="t4Body()" class="sel"><option value="all">全部</option><option value="gc">海外仓</option><option value="direct">国内直发</option></select></div>
+    <div><label class="hint" style="display:block;font-size:11px">阶段</label><select id="t4_stage" onchange="t4Body()" class="sel"><option value="*">全部</option>${stArr.map(x=>`<option>${x}</option>`).join("")}</select></div>
+    <div><label class="hint" style="display:block;font-size:11px">国家</label><select id="t4_country" onchange="t4Body()" class="sel"><option value="*">全部</option>${[...countries].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
+    <div><label class="hint" style="display:block;font-size:11px">渠道</label><select id="t4_ch" onchange="t4Body()" class="sel"><option value="*">全部</option>${[...chs].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
+    <div><label class="hint" style="display:block;font-size:11px">发货仓</label><select id="t4_wh" onchange="t4Body()" class="sel"><option value="*">全部</option>${[...whs].sort().map(x=>`<option>${x}</option>`).join("")}</select></div>
+    <button class="act" onclick="t4Reset()" style="margin-bottom:1px">重置</button>
+  </div><div id="t4_out"></div>`;
+  t4Body();
+}
+function t4Reset(){renderT4()}
+function t4Lookup(mode,stage,ctry,ch,wh){
+  const th=D().thresholds||{}; const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
+  const min=th.hier_min_n||30;
+  if(mode==="gc"){
+    if(stage==="到达待取")return null;
+    const keys=[`${stage}|${wh}|${ctry}|${ch}`,`${stage}|*|${ctry}|${ch}`,`${stage}|${wh}|${ctry}|*`,`${stage}|*|${ctry}|*`,`${stage}|*|*|${ch}`,`${stage}|*|*|*`];
+    for(const k of keys){const v=hier[k];if(v&&v.n>=min&&v.P98)return{k,v};}
+    return null;
+  }
+  const v=direct[`${stage}×${ctry}`];
+  return v&&v.P98?{k:`${stage}×${ctry}（直发）`,v}:null;
+}
+function t4Body(){
+  const th=D().thresholds||{}; const hier=th.stage_forecast_hier||{}; const direct=th.stage_forecast_direct||{};
+  const min=th.hier_min_n||30; const jl=(th.judge_lines||{});
+  const g=id=>document.getElementById(id).value;
+  const mode=g("t4_mode"),stage=g("t4_stage"),ctry=g("t4_country"),ch=g("t4_ch"),wh=g("t4_wh");
+  const STAGE_ORDER=["揽收前","仓库处理/交接","揽收/首公里","出口清关","境内运输","头程","进口清关","到达待取","尾程","尾程派送中"];
+  const modes=mode==="all"?["gc","direct"]:[mode];
+  const stArr=stage==="*"?STAGE_ORDER.filter(st=>stagesHas(st)):[stage];
+  const ctryArr=ctry==="*"?[...new Set([...Object.keys(hier).map(k=>k.split("|")[2]),...Object.keys(direct).map(k=>k.split("×")[1])])].filter(c=>c&&c!=="*"&&c!=="??").sort():[ctry];
+  function stagesHas(st){return hier[st+"|*|*|*"]||direct[st+"×*"]||Object.keys(hier).some(k=>k.startsWith(st+"|"))||Object.keys(direct).some(k=>k.startsWith(st+"×"));}
+  // 组合评估
+  const combos=[];
+  modes.forEach(m=>stArr.forEach(st=>ctryArr.forEach(c=>{
+    const hit=t4Lookup(m,st,c,ch,wh);
+    if(hit)combos.push({m,st,c,hit,judge:jl[c]||jl["default"]||30});
+  })));
+  const out=document.getElementById("t4_out");
+  const single=(mode!=="all"&&stage!=="*"&&ctry!=="*");
+  let html="";
+  if(single&&combos.length===1){
+    const c0=combos[0];const hit=c0.hit;
+    html+=`<div style="border:1px solid #85b7eb;background:#E6F1FB;border-radius:10px;padding:10px 14px;margin-bottom:12px">
+      <p style="margin:0;font-size:12px;color:var(--tx2)">实际生效黄线（引擎回退模拟，与判定逻辑同源）</p>
+      <p style="margin:4px 0 0;font-size:15px;font-weight:500;color:#185FA5">${c0.st}停留 ≥ ${hit.v.P98} 天 → 黄色观察</p>
+      <p style="margin:4px 0 0;font-size:12px;color:var(--tx2)">来自桶 <b>${hit.k.replace(/\|/g," | ")}</b>（n=${hit.v.n}）· 再停留 ${Math.max(0,(c0.judge-hit.v.P98)).toFixed(1)} 天触及判丢线 ${c0.judge} 天 · 红线静默 ${th.silence_red_d||15} 天</p></div>`;
+    if(mode==="gc"){
+      const keys=[`${stage}|${wh}|${ctry}|${ch}`,`${stage}|*|${ctry}|${ch}`,`${stage}|${wh}|${ctry}|*`,`${stage}|*|${ctry}|*`,`${stage}|*|*|${ch}`,`${stage}|*|*|*`];
+      const seen=new Set();const rows=[];
+      keys.forEach(k=>{const v=hier[k];if(!v||seen.has(k))return;seen.add(k);rows.push({k,v,used:v.n>=min&&v.P98&&hit.k===k});});
+      html+=`<p style="font-weight:500;margin:0 0 6px">命中桶明细（按回退链顺序）</p>
+      <table><tr><th>层级桶（阶段 | 仓 | 国家 | 渠道）</th><th>n</th><th>P50</th><th>P95 关注线</th><th>P98 黄线</th></tr>
+      ${rows.map(r=>`<tr style="${r.used?"background:#E6F1FB":""}"><td>${r.k.replace(/\|/g," | ")}${r.used?" ★生效":""}</td><td style="text-align:center">${r.v.n}${r.v.n<min?' <span class="hint">(n&lt;'+min+'不启用)</span>':''}</td><td style="text-align:center">${r.v.P50}</td><td style="text-align:center">${r.v.P95}</td><td style="text-align:center">${r.v.P98}</td></tr>`).join("")}</table>`;
+    }
+  } else {
+    // 多组合：旅程总览表（每行=阶段×国家×模式 的生效黄线）
+    const grp=m=>`<p style="font-weight:500;margin:10px 0 4px">${m==="gc"?"海外仓":"国内直发"}${mode==="all"?"（基线独立，两套不可混用）":""}</p>
+    <table><tr><th>阶段</th><th>国家</th><th>生效黄线(P98)</th><th>来自桶</th><th>n</th><th>判丢线</th></tr>
+    ${combos.filter(c=>c.m===m).sort((a,b)=>STAGE_ORDER.indexOf(a.st)-STAGE_ORDER.indexOf(b.st)||a.c.localeCompare(b.c))
+      .map(c=>`<tr><td>${c.st}</td><td>${c.c}</td><td style="font-weight:500">${c.hit.v.P98} 天</td><td class="hint">${c.hit.k.replace(/\|/g," | ")}</td><td style="text-align:center">${c.hit.v.n}</td><td>${c.judge} 天</td></tr>`).join("")
+      +(m==="gc"?'<tr><td>到达待取</td><td colspan="5" class="hint">不走停滞黄线（样本不足），由「待取提醒」管理：≥2天提醒取件，超保留期转退件台账</td></tr>':'')}</table>`;
+    html=modes.map(grp).join("");
+  }
+  const jlRows=Object.entries(jl).map(([k,v])=>`<tr><td>${k==="default"?"默认（其余国家）":k}</td><td>${v} 天</td><td>各国妥投时效P99实证</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  const tp=th.transit_p90_by_country||{};
+  const tpRows=Object.entries(tp).filter(([k])=>["US","BR","GB","FR","IT","ES","JP","CA","AU","DE"].includes(k)).sort().map(([k,v])=>`<tr><td>${k}</td><td>P90 = ${v} 天</td><td>妥投单全程时效分位</td><td><span class="badge b-grn">已校准</span></td></tr>`).join("");
+  html+=`
+  <p style="font-weight:500;margin:14px 0 4px">分国家判丢线</p>
+  <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${jlRows}</table>
+  <p style="font-weight:500;margin:14px 0 4px">时效预警线（全程时效 P90）</p>
+  <table><tr><th>国家</th><th>阈值</th><th>出处</th><th>状态</th></tr>${tpRows}</table>
+  <p style="font-weight:500;margin:14px 0 4px">保留的经验值规则（尚未校准）</p>
+  <table><tr><th>规则</th><th>阈值</th><th>出处</th><th>状态</th></tr>
+    <tr><td>出库超时（LSR）</td><td>下单+2 个工作日</td><td>Amazon Seller Central（口径B）</td><td><span class="badge b-grn">官方口径</span></td></tr>
+    <tr><td>揽收超时</td><td>48h</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+    <tr><td>长期未上网</td><td>15 天</td><td>经验值</td><td><span class="badge b-amb">未校准</span></td></tr>
+  </table>
+  <p class="hint" style="margin-top:10px">引擎 ${th.version||""} · 语料：直发84,739单 + 谷仓4,013单 + 妥投70,049单 · 全部规则经全量回放验证 · 回退链：阶段×仓×国×渠道(n≥${min}) → … → 阶段全局；直发与海外仓基线严格隔离</p>`;
+  out.innerHTML=html;
+}
+let T5DRAFT=null;let T5PANEL=null;
+function t5Draft(){
+  if(!T5DRAFT){
+    const me=localStorage.getItem("pm_staff_v1");
+    T5DRAFT=me?JSON.parse(me):(D().staff||{people:["未分配"],rules:[]});
+    T5DRAFT.rules=(T5DRAFT.rules||[]).map(normRule);
+    T5DRAFT.people=T5DRAFT.people||["未分配"];
+  }
+  return T5DRAFT;
+}
+function t5Commit(){T5DRAFT=null;T5PANEL=null}
+function t5Options(){
+  const d=D();const chs=new Set(),dests=new Set(),types=new Set();
+  (d.exceptions||[]).forEach(e=>{if(e.channel)chs.add(e.channel);if(e.dest)dests.add(e.dest);if(e.type)types.add(e.type);});
+  (d.waybills||[]).forEach(w=>{if(w.channel)chs.add(w.channel);});
+  return {chs:[...chs].sort(),dests:[...dests].sort(),types:[...types].sort(),
+          biz:["WISCO","SOYAMA","AP","PLBG","佳珞裴","PuHuo","Wholesale-1"],levels:["红","黄","判丢"],
+          modes:["谷仓","云途直发"]};
+}
+function ruleDesc(r){
+  const n=normRule(r);const parts=[];
+  if(n.mode)parts.push(n.mode);
+  if(n.biz.length)parts.push("业务线 "+n.biz.join("/"));
+  if(n.channel.length)parts.push("渠道含 "+n.channel.join("/"));
+  if(n.dest.length)parts.push("国家 "+n.dest.join("/"));
+  if(n.type.length)parts.push("类型 "+n.type.join("/"));
+  if(n.level.length)parts.push("级别 "+n.level.join("/"));
+  return n.who+" → 负责 "+(parts.length?parts.join(" · "):"所有异常（兜底）");
+}
+function t5Panel(ri,f){T5PANEL={ri,f,q:""};renderT5()}
+function t5Close(){T5PANEL=null;renderT5()}
+function t5PanelQ(q){if(T5PANEL)T5PANEL.q=q;renderT5();
+  const el=document.querySelector("#t5_body .mselq");if(el){el.focus();}}
+function t5Tgl(ri,f,val){const r=t5Draft().rules[ri];if(!r[f])r[f]=[];
+  const ix=r[f].indexOf(val);if(ix>=0)r[f].splice(ix,1);else r[f].push(val);
+  T5PANEL={ri,f,q:T5PANEL?T5PANEL.q:""};renderT5();
+  const el=document.querySelector("#t5_body .mselq");if(el)el.focus();}
+function t5SetQuiet(ri,f,v){const r=t5Draft().rules[ri];if(f==="p")r.p=+v||99;else r[f]=v;}
+function t5DD(ri,f,label,opts,sel){
+  const open=T5PANEL&&T5PANEL.ri===ri&&T5PANEL.f===f;
+  const txt=sel.length?(sel.length<=3?sel.join("/"):sel.slice(0,3).join("/")+" 等"+sel.length+"项"):"全部";
+  let h=`<span style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px"><span class="hint">${label}</span><span><span class="mselb" onclick="t5Panel(${ri},'${f}')">${esc(txt)} ▾</span>`;
+  if(open){
+    const q=(T5PANEL.q||"").toUpperCase();
+    const customs=sel.filter(x=>!opts.includes(x));
+    const list=opts.filter(o=>!q||o.toUpperCase().includes(q)).concat(customs.filter(c=>q&&c.toUpperCase().includes(q)));
+    h+=`<div style="border:0.5px solid var(--bd);border-radius:10px;padding:8px;margin-top:4px;background:var(--bg);max-width:480px">
+      <input class="t5in mselq" style="width:100%" placeholder="搜索；输入新值按回车=添加自定义" value="${esc(T5PANEL.q||"")}"
+        oninput="t5PanelQ(this.value)" onkeydown="if(event.key==='Enter'&&this.value.trim()){t5Tgl(${ri},'${f}',this.value.trim());}">
+      <div style="max-height:190px;overflow:auto;margin-top:4px">
+      ${list.map(o=>`<label style="display:block;padding:3px 4px;font-size:12px;cursor:pointer"><input type="checkbox" ${sel.includes(o)?"checked":""} onchange="t5Tgl(${ri},'${f}','${esc(o)}')"> ${esc(o)}${sel.includes(o)?" ✓":""}</label>`).join("")||'<p class="hint" style="margin:4px">无匹配，回车添加自定义</p>'}
+      </div>
+      <div style="margin-top:4px"><button class="act" onclick="t5Close()">完成</button> <span class="hint">已选 ${sel.length} 项${sel.length?"："+esc(sel.join("/")):"（=全部）"}</span></div>
+    </div>`;
+  }
+  return h+`</span>`;
+}
+function renderT5(){
+  const st=t5Draft();const O=t5Options();
+  const B=document.getElementById("t5_body");
+  const peopleStr=(st.people||[]).filter(p=>p&&p!=="未分配").join("、");
+  const cards=(st.rules||[]).slice().sort((a,b)=>a.p-b.p).map((r)=>{
+    const ri=st.rules.indexOf(r);
+    return `<div style="border:0.5px solid var(--bd);border-radius:12px;padding:10px 14px;margin-bottom:10px;background:var(--bg2)">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <span class="hint">优先级</span><input class="t5in" style="width:44px" value="${r.p}" onchange="t5SetQuiet(${ri},'p',this.value)">
+      <span class="hint">负责人</span><select class="t5in" onchange="t5SetQuiet(${ri},'who',this.value)">${[...new Set(["未分配",...(st.people||[])])].map(p=>`<option${r.who===p?" selected":""}>${p}</option>`).join("")}</select>
+      <span style="flex:1;font-size:12px;color:#185FA5">${esc(ruleDesc(r))}</span>
+      <button class="act" onclick="t5DelRule(${ri})">删</button>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+      ${t5DD(ri,"mode","发货模式",O.modes,r.mode?[r.mode]:[])}
+      ${t5DD(ri,"channel","渠道",O.chs,r.channel)}
+      ${t5DD(ri,"dest","目的国",O.dests,r.dest)}
+      ${t5DD(ri,"biz","业务线",O.biz,r.biz)}
+      ${t5DD(ri,"type","异常类型",O.types,r.type)}
+      ${t5DD(ri,"level","级别",O.levels,r.level)}
+      <span style="display:inline-flex;flex-direction:column;gap:2px"><span class="hint">备注</span><input class="t5in" style="width:150px" value="${r.note||""}" onchange="t5SetQuiet(${ri},'note',this.value)"></span>
+    </div>
+  </div>`;}).join("");
+  B.innerHTML=`<p class="hint" style="margin:0 0 10px">① 修改在本浏览器即时生效；② 「导出JSON」发助理即可发布为全团队版本；③ 匹配按优先级升序，首条命中即定负责人，全不命中进「未分配」池；④ 任一维度不选=该维度通配（全部）。</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+    <div style="flex:1;min-width:220px"><label class="hint" style="display:block;font-size:11px">人员名单（顿号分隔）</label><input id="t5_people" class="t5in" style="width:100%" value="${peopleStr}"></div>
+    <button class="act" onclick="t5Apply()">应用人员</button>
+    <button class="act" onclick="t5AddRule()">加规则</button>
+    <button class="act" onclick="t5Save()">保存（本机生效）</button>
+    <button class="act" onclick="t5Export()">导出JSON（发助理发布）</button>
+    <button class="act" onclick="t5Reset()">恢复内置版本</button>
+  </div>
+  <div style="border:0.5px solid var(--bd);border-radius:12px;padding:10px 14px;margin-bottom:12px;background:var(--bg2)">
+    <p style="font-weight:500;margin:0 0 6px">规则试金石：输入运单号，看命中哪条规则</p>
+    <input id="t5_test" class="t5in" style="width:220px" placeholder="运单号">
+    <button class="act" onclick="t5Test()">试</button>
+    <span id="t5_test_out" style="margin-left:10px;font-size:12px"></span>
+  </div>
+  ${cards||'<p class="hint">暂无规则，点「加规则」创建</p>'}
+  <button class="act" onclick="t5AddRule()">加规则</button>
+  <p class="hint" style="margin-top:10px">业务线打标：当前全部为「未标注」，待聚水潭订单号→业务线映射接入后自动填充。</p>`;
+}
+function t5Test(){
+  const wb=(document.getElementById("t5_test").value||"").trim().toUpperCase();
+  const ex=(D().exceptions||[]).find(e=>e.waybill===wb)||((D().exceptions||[]).find(e=>(e.waybill||"").includes(wb)));
+  const o=document.getElementById("t5_test_out");
+  if(!ex){o.innerHTML='<span style="color:var(--red)">找不到该运单号</span>';return;}
+  const st=t5Draft();const rules=st.rules.map(normRule).sort((a,b)=>a.p-b.p);
+  let hit=null;
+  for(const r of rules){
+    const mode=(ex.source==="谷仓")?"谷仓":(ex.source==="云途直发"?"云途直发":"");
+    if(r.mode&&r.mode!==mode)continue;
+    if(r.channel.length&&!r.channel.some(x=>(ex.channel||"").includes(x)))continue;
+    if(r.dest.length&&!r.dest.includes(ex.dest))continue;
+    if(r.biz.length&&!(ex.biz&&r.biz.includes(ex.biz)))continue;
+    if(r.type.length&&!r.type.includes(ex.type))continue;
+    if(r.level.length&&!r.level.includes(ex.level))continue;
+    hit=r;break;}
+  o.innerHTML=hit?`<span style="color:#185FA5;font-weight:500">${ex.waybill} → ${esc(ruleDesc(hit))}</span>`:`<span style="color:#A32D2D">${ex.waybill} → 未命中任何规则（进未分配池）</span>`;
+}
+function t5Collect(){
+  const st=t5Draft();
+  st.people=["未分配",...(document.getElementById("t5_people").value.split(/[、,，\s]+/).map(x=>x.trim()).filter(Boolean))];
+  return st;
+}
+function t5Apply(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));t5Commit();fillOwnerFilter();renderT5();renderEx();}
+function t5Save(){const st=t5Collect();localStorage.setItem("pm_staff_v1",JSON.stringify(st));t5Commit();alert("已保存，本浏览器即时生效。要全团队生效请「导出JSON」发助理发布。");renderT5();}
+function t5AddRule(){const st=t5Draft();st.rules.push({p:st.rules.length+1,who:"未分配",mode:"",channel:[],dest:[],type:[],biz:[],level:[],note:""});renderT5();}
+function t5DelRule(ri){const st=t5Draft();st.rules.splice(ri,1);st.rules.forEach((r,ix)=>r.p=ix+1);renderT5();fillOwnerFilter();renderEx();}
+function t5Export(){const st=t5Collect();const blob=new Blob([JSON.stringify(st,null,1)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="staff.json";a.click();}
+function t5Reset(){localStorage.removeItem("pm_staff_v1");t5Commit();renderT5();fillOwnerFilter();renderEx();}
+function init(){
+  const d=D();
+  document.getElementById("scope").textContent=d.meta.p1_scope||"P1";
+  document.getElementById("cutoff").textContent="数据截至 "+(d.meta.cutoff||"—")+" · 示例/种子数据以底表为准";
+  const s=d.summary||{};
+  const KPI_CLICK={"红色异常":"红","黄色观察":"黄","隐性停滞/判丢":"__stall__","异常合计":"","待取提醒(非异常)":"提醒","我的待办":"__mine__"};
+  document.getElementById("kpis").innerHTML=[
+    ["在途总单量",s.total||0,"","__all__"],["红色异常",s.red||0,"color:var(--red)","红"],["黄色观察",s.yellow||0,"color:var(--amb)","黄"],["隐性停滞/判丢",s.stall||0,"color:var(--amb)","__stall__"],["异常合计",(s.red||0)+(s.yellow||0)+(s.lost||0),"",""],["待取提醒(非异常)",s.reminders||0,"color:var(--tx2)","提醒"],["我的待办",(function(){const me=localStorage.getItem("pm_me");if(!me)return 0;return (d.exceptions||[]).filter(e=>ownerOf(e)===me&&e.level!=="提醒"&&(e.disp||"待处理")!=="已销案").length})(),"color:var(--blubg)","__mine__"]]
+    .map(([k,v,st,fl])=>`<div class="card" style="cursor:pointer" onclick="kpiDrill('${fl}')"><p class="k">${k}</p><p class="v" style="${st}">${v}</p></div>`).join("");
+  window.KPI_CLICK=KPI_CLICK;
+  const dist=d.stage_dist||{};const mx=Math.max(1,...Object.values(dist));
+  const order=["揽收前","仓库处理/交接","揽收/首公里","出口清关","境内运输","头程","进口清关","到达待取","尾程","尾程-待取","尾程派送中","其他","异常挂起","无轨迹"];
+  document.getElementById("dist").innerHTML=Object.entries(dist).sort((a,b)=>order.indexOf(a[0])-order.indexOf(b[0]))
+    .map(([k,v])=>`<p class="muted rowclick" onclick="drillStage('${k}')">${k}</p><p class="rowclick" style="font-weight:500;text-align:right;${k==="异常挂起"?"color:var(--red)":""}" onclick="drillStage('${k}')">${v}</p>
+      <div class="bar rowclick" onclick="drillStage('${k}')"><div style="width:${(v/mx*100).toFixed(1)}%;background:${STAGE_COLOR[k]||"#888"}"></div></div>
+      <p class="hint">${d.summary.total?(v/d.summary.total*100).toFixed(0):0}%</p>`).join("");
+  fillFilters();fillOwnerFilter();renderEx();renderWaybillList();
+    const bscript=document.querySelector('script[src*="app.js"]');
+  const bv=bscript?(bscript.src.split("v=")[1]||""):"";
+  document.getElementById("buildinfo").textContent="页面构建 v="+(bv||"—")+" · 数据截至 "+((D().meta||{}).cutoff||"—")+" · 若页面样式与摘要不符请强刷(Ctrl+F5)";
+}
+const NODE_STAGE_JS={"ORDER_CREATION":"揽收前","PRE_INFO":"揽收前","CARRIER_PICKUP":"揽收/首公里","FIRST_MILE_ARRIVE":"揽收/首公里","FIRST_MILE_DEPART":"揽收/首公里","DEPART_CONFIRM_OC":"揽收/首公里","IN_TRANSIT":"头程","IN_TRANSIT_CARRIER":"头程","MAIN_LINE_ARRIVE":"头程","MAIN_LINE_DEPART":"头程","TRANSITHUB_ARRIVE":"头程","ARRIVE_CONFIRM_OC":"头程","ARRIVE_ORIN_CUSTOMS":"出口清关","EXPORT CUSTOMS COMPLETE":"出口清关","EXPORT_CUSTOMS_COMPLETE":"出口清关","CUSTOMS_PROCESSING":"进口清关","CUSTOMS_COMPLETE":"进口清关","CUSTOMS_INSPCTION":"进口清关","CUSTOMS_RELEASE":"进口清关","INBOUND_CCA":"进口清关","PICKUP_CARGO_TERMINAL":"尾程","READY_FOR_OUTBOUND":"尾程","DELIVERY_ATTEMPT":"尾程派送中","REDELIVERY":"尾程派送中","DELIVERY_FAILURE":"投递失败","DELIVERED":"已签收","RETURNED_TO_SENDER":"退件","RETURNED":"退件","ARRANGE_FOR_RETURN":"退件","PACKAGE_EXCEPTION":"异常","TMS_OC":"揽收前","TMS_AS":"揽收前","TMS_PU":"仓库处理/交接","TMS_IT":"境内运输","TMS_UN":"境内运输","TMS_WPU":"到达待取","TMS_OD":"尾程派送中","TMS_FD":"已签收","TMS_DF":"投递失败","TMS_EXCP":"异常","TMS_RT":"退件"};
+function stageOfEv(e){if(!e)return"无轨迹";if(e.status===50)return"已签收";if(e.status===90)return"退件";const n=(e.node||"").trim();if(NODE_STAGE_JS[n])return NODE_STAGE_JS[n];if(e.status===10)return"揽收前";if(e.status===30)return"尾程-待取";if(e.status===40)return"投递失败";if(e.status===60)return"异常";if(e.status===20)return"头程";return"其他"}
+function waybillStage(w){
+  if(w.cached&&[50,90,100].includes(w.status))return"已完成(历史)";
+  const ex=w.exceptions||[];
+  if(ex.some(e=>e.level==="红"||e.level==="判丢"))return"异常挂起";
+  const evs=w.events||[];
+  return evs.length?stageOfEv(evs[evs.length-1]):"无轨迹";
+}
+function drillStage(stage){
+  const ws=(D().waybills||[]).map((w,i)=>({w,i})).filter(x=>waybillStage(x.w)===stage);
+  document.getElementById("drill_title").textContent=stage+" · "+ws.length+" 单";
+  document.querySelector("#drill_tab tbody").innerHTML=ws.map(({w,i})=>`<tr>
+    <td>${w.waybill}</td><td>${w.channel||"—"}</td><td>${w.dest||"—"}</td>
+    <td>${w.status===50?"已签收":w.status===90?"退回":w.status===60?"异常":w.status===40?"投递失败":w.status===10?"预报":"在途"}</td>
+    <td class="muted">${(w.last_desc||(w.events&&w.events.length?w.events[w.events.length-1].desc:"")||"—").slice(0,50)}</td>
+    <td><button class="act" onclick="document.getElementById('drill').style.display='none';openWDrawer(${i})">轨迹</button></td></tr>`).join("")
+    ||'<tr><td colspan="6" class="hint">无运单</td></tr>';
+  document.getElementById("drill").style.display="flex";
+}
+function kpiDrill(fl){
+  if(fl==="__all__"){drillStage("__all__");
+    const ws=(D().waybills||[]).map((w,i)=>({w,i}));
+    document.getElementById("drill_title").textContent="全部在途运单 · "+ws.length+" 单";
+    document.querySelector("#drill_tab tbody").innerHTML=ws.slice(0,300).map(({w,i})=>`<tr>
+      <td>${w.waybill}</td><td>${w.channel||"—"}</td><td>${w.dest||"—"}</td>
+      <td>${waybillStage(w)}</td><td class="muted">${(w.last_desc||"—").slice(0,50)}</td>
+      <td><button class="act" onclick="document.getElementById('drill').style.display='none';openWDrawer(${i})">轨迹</button></td></tr>`).join("");
+    document.getElementById("drill").style.display="flex";return;}
+  if(fl==="__mine__"){const me=localStorage.getItem("pm_me")||"";tab("t2");document.getElementById("f_owner").value=me;renderEx();return;}
+  tab("t2");document.getElementById("f_level").value=fl;
+  if(fl==="提醒")document.getElementById("f_level").value="提醒";
+  renderEx();
+}
+function uniq(a){return [...new Set(a.filter(Boolean))]}
+function fillFilters(){
+  const d=D();const ex=d.exceptions||[];
+  const carriers=uniq(ex.map(e=>e.channel.split("-")[0]));
+  document.getElementById("f_carrier").innerHTML='<option value="">全部</option>'+carriers.map(c=>`<option>${c}</option>`).join("");
+  document.getElementById("f_dest").innerHTML='<option value="">全部</option>'+uniq(ex.map(e=>e.dest)).map(c=>`<option>${c}</option>`).join("");
+  document.getElementById("f_type").innerHTML='<option value="">全部</option>'+uniq(ex.map(e=>e.type)).map(c=>`<option>${c}</option>`).join("");
+  document.getElementById("f_resp").innerHTML='<option value="">全部</option>'+uniq(ex.map(e=>e.responsible)).map(c=>`<option>${c}</option>`).join("");
+}
+function fillChannel(){
+  const v=document.getElementById("f_carrier").value;const d=D();
+  const chs=uniq((d.exceptions||[]).filter(e=>!v||e.channel.split("-")[0]===v).map(e=>e.channel));
+  document.getElementById("f_channel").innerHTML='<option value="">全部</option>'+chs.map(c=>`<option>${c}</option>`).join("");
+}
+function filtered(){
+  const g=id=>document.getElementById(id).value;const d=D();const now=new Date();
+  const lastEv={};(d.waybills||[]).forEach(w=>{if(w.events&&w.events.length)lastEv[w.waybill]=w.events[w.events.length-1].t;});
+  return (d.exceptions||[]).filter(e=>{
+    if(g("f_carrier")&&e.channel.split("-")[0]!==g("f_carrier"))return false;
+    if(g("f_channel")&&e.channel!==g("f_channel"))return false;
+    if(g("f_dest")&&e.dest!==g("f_dest"))return false;
+    if(g("f_type")&&e.type!==g("f_type"))return false;
+    if(g("f_level")){
+      if(g("f_level")==="提醒"){if(!(e.kind==="reminder"&&e.level==="提醒"))return false;}
+      else if(g("f_level")==="__stall__"){if(!(e.type.includes("停滞")||e.level==="判丢"))return false;}
+      else if(e.level!==g("f_level"))return false;}
+    if(g("f_resp")&&e.responsible!==g("f_resp"))return false;
+    if(g("f_disp")&&(e.disp||"待处理")!==g("f_disp"))return false;
+    if(g("f_source")&&(e.source||"")!==g("f_source"))return false;
+    if(g("f_wb")&&!(e.waybill||"").includes(g("f_wb").trim().toUpperCase()))return false;
+    if(g("f_owner")){const o=ownerOf(e);if(g("f_owner")==="__un__"?o!=="未分配":o!==g("f_owner"))return false;}
+    if(g("f_dwell")){const d=dwellDays(e);if(!(d>=+g("f_dwell")))return false;}
+    if(g("f_time")&&g("f_time")!=="全部"){
+      const t=lastEv[e.waybill];if(!t)return false;
+      const days=(Date.now()-new Date(t.replace(" ","T")).getTime())/86400000;
+      if(g("f_time")==="今日"&&days>1)return false;
+      if(g("f_time")==="本周"&&days>7)return false;
+      if(g("f_time")==="本月"&&days>31)return false;}
+    return true;});
+}
+function t5Staff(){const me=localStorage.getItem("pm_staff_v1");if(me){try{return JSON.parse(me)}catch(e){}}return (D().staff)||{people:["未分配"],rules:[]};}
+function normRule(r){
+  const arr=x=>x==null?[]:(Array.isArray(x)?x.map(v=>String(v).trim()).filter(Boolean):[String(x).trim()]);
+  return {p:+(r.p||99),who:r.who||"未分配",mode:r.mode||"",channel:arr(r.channel),dest:arr(r.dest),type:arr(r.type),biz:arr(r.biz),level:arr(r.level),note:r.note||""};
+}
+function ownerOf(ex){
+  const st=t5Staff();const mode=(ex.source==="谷仓")?"谷仓":(ex.source==="云途直发"?"云途直发":"");
+  const rules=(st.rules||[]).map(normRule).sort((a,b)=>a.p-b.p);
+  for(const r of rules){
+    if(r.mode&&r.mode!==mode)continue;
+    if(r.channel.length&&!r.channel.some(x=>(ex.channel||"").includes(x)))continue;
+    if(r.dest.length&&!r.dest.includes(ex.dest))continue;
+    if(r.biz.length&&!(ex.biz&&r.biz.includes(ex.biz)))continue;
+    if(r.type.length&&!r.type.includes(ex.type))continue;
+    if(r.level.length&&!r.level.includes(ex.level))continue;
+    return r.who||"未分配";
+  }
+  return "未分配";
+}
+function dwellDays(ex){
+  const m=(ex.basis||"").match(/(?:停留|静默|无更新|发货已)(\d+(?:\.\d+)?)/);
+  if(m)return parseFloat(m[1]);
+  const m2=(ex.basis||"").match(/(\d+)天无更新/);
+  return m2?parseFloat(m2[1]):0;
+}
+const LV_ORD={"判丢":0,"红":1,"黄":2,"提醒":3};
+function fillOwnerFilter(){
+  const d=D();const st=t5Staff();
+  const owners=[...new Set((d.exceptions||[]).map(e=>ownerOf(e)))].sort();
+  const cur=document.getElementById("f_owner").value;
+  document.getElementById("f_owner").innerHTML='<option value="">全部</option><option value="__un__">未分配</option>'+owners.filter(o=>o!=="未分配").map(o=>`<option>${o}</option>`).join("");
+  document.getElementById("f_owner").value=[...owners,"__un__"].includes(cur)||cur===""?cur:"";
+  const me=localStorage.getItem("pm_me")||"";
+  const msel=document.getElementById("me_sel");
+  msel.innerHTML='<option value="">（未选择）</option>'+[...new Set([...(st.people||[]),...owners])].filter(p=>p&&p!=="未分配").map(p=>`<option${p===me?" selected":""}>${p}</option>`).join("");
+}
+function renderEx(){
+  const tb=document.querySelector("#extab tbody");
+  const rows=filtered().map(e=>({e,o:ownerOf(e),d:dwellDays(e)}));
+  rows.sort((a,b)=>{
+    const la=LV_ORD[a.e.level]??9, lb=LV_ORD[b.e.level]??9;
+    if(la!==lb)return la-lb;
+    return b.d-a.d;
+  });
+  tb.innerHTML=rows.map(({e,o})=>`<tr>
+    <td><span class="badge ${LV[e.level]||"b-gray"}">${e.level}</span></td>
+    <td style="font-family:monospace;cursor:pointer;color:#185FA5" onclick="openWDrawerByWb('${e.waybill}')">${e.waybill}</td><td class="muted">${e.source||"—"}</td>
+    <td>${o==="未分配"?'<span style="color:var(--red);font-weight:500">未分配</span>':o}</td>
+    <td>${e.channel||"—"}</td><td>${e.dest||"—"}</td>
+    <td>${e.type}</td><td class="muted">${e.basis}</td><td>${e.responsible}</td>
+    <td class="muted">${e.action}</td><td class="hint">${e.tag||""}</td></tr>`).join("")
+    ||'<tr><td colspan="11" class="hint">当前筛选无异常单</td></tr>';
+  document.getElementById("excount").textContent=rows.length+" 条命中";
+  document.getElementById("fname").textContent="文件名示例：异常清单_按当前筛选_"+(D().meta.generated_at||"").slice(0,10)+".xlsx";
+}
+function exportExcel(mode){
+  const d=D();const wb=new ExcelJS.Workbook();wb.creator="Parcel Monitor";
+  const ws=wb.addWorksheet(mode==="detail"?"异常明细":"汇总");
+  ws.addRow(["小包异常清单 · "+(mode==="detail"?"明细模式":"汇总模式")]);
+  ws.addRow(["数据截至："+(d.meta.cutoff||"")+" · 生成时间："+(d.meta.generated_at||"")]);
+  ws.addRow([]);
+  if(mode==="detail"){
+    ["分级","运单号","跟踪号","渠道","目的国","末端服务商","异常类型","判定依据","责任方","动作","标记"].forEach(h=>ws.addRow([h]));
+    const trk={};(d.waybills||[]).forEach(w=>trk[w.waybill]=w);
+    filtered().forEach(e=>ws.addRow([e.level,e.waybill,(trk[e.waybill]||{}).tracking||"",e.channel,e.dest,(trk[e.waybill]||{}).provider||"",e.type,e.basis,e.responsible,e.action,e.tag||""]));
+  }else{
+    const m={};filtered().forEach(e=>{const k=e.channel+" | "+e.dest+" | "+e.type;m[k]=(m[k]||0)+1});
+    ["渠道","目的国","异常类型","单量"].forEach(h=>ws.addRow([h]));
+    Object.entries(m).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>ws.addRow([...k.split(" | "),v]));
+  }
+  ws.getRow(1).font={bold:true};ws.columns.forEach(c=>c.width=18);
+  wb.xlsx.writeBuffer().then(b=>{const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([b],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+    a.download="异常清单_"+(D().meta.generated_at||"").slice(0,10)+".xlsx";a.click()});
+}
+let curW=null;
+const WL={page:1,size:50};
+function wlFiltered(){
+  const d=D();const g=id=>document.getElementById(id).value;
+  const q=(g("wl_q")||"").trim().toUpperCase();
+  return (d.waybills||[]).map((w,i)=>({w,i})).filter(({w})=>{
+    if(q&&!(w.waybill||"").includes(q))return false;
+    if(g("wl_source")&&(w.source||"")!==g("wl_source"))return false;
+    if(g("wl_dest")&&w.dest!==g("wl_dest"))return false;
+    if(g("wl_stage")&&waybillStage(w)!==g("wl_stage"))return false;
+    if(g("wl_owner")){const o=ownerOf(w);if(g("wl_owner")==="__un__"?o!=="未分配":o!==g("wl_owner"))return false;}
+    return true;
+  });
+}
+function renderWaybillList(){
+  const d=D();const rows=wlFiltered();
+  const g=id=>document.getElementById(id).value;
+  // 填充国家/阶段下拉（一次）
+  const ds=[...new Set((d.waybills||[]).map(w=>w.dest).filter(Boolean))].sort();
+  const dsel=document.getElementById("wl_dest");
+  if(dsel.options.length<=1){dsel.innerHTML='<option value="">全部</option>'+ds.map(c=>`<option>${c}</option>`).join("");}
+  const ssel=document.getElementById("wl_stage");
+  if(ssel.options.length<=1){const sts=[...new Set((d.waybills||[]).map(w=>waybillStage(w)))].sort();
+    ssel.innerHTML='<option value="">全部</option>'+sts.map(x=>`<option>${x}</option>`).join("");}
+  const osel=document.getElementById("wl_owner");
+  if(osel.options.length<=2){const owners=[...new Set((d.waybills||[]).map(w=>ownerOf(w)))].sort();
+    osel.innerHTML='<option value="">全部</option><option value="__un__">未分配</option>'+owners.filter(o=>o!=="未分配").map(o=>`<option>${o}</option>`).join("");}
+  const pages=Math.max(1,Math.ceil(rows.length/WL.size));
+  if(WL.page>pages)WL.page=pages;
+  const slice=rows.slice((WL.page-1)*WL.size,WL.page*WL.size);
+  document.querySelector("#wltab tbody").innerHTML=slice.map(({w,i})=>{
+    const o=ownerOf(w);
+    return `<tr>
+      <td style="font-family:monospace">${w.waybill}</td>
+      <td class="muted">${w.source||"—"}</td><td>${w.dest||"—"}</td>
+      <td>${waybillStage(w)}</td>
+      <td>${w.status===50?"已签收":w.status===90?"退回":w.status===60?"异常":w.status===40?"投递失败":w.status===10?"预报":"在途"}</td>
+      <td class="muted" style="max-width:260px">${(w.last_desc||(w.events&&w.events.length?w.events[w.events.length-1].desc:"")||"—").slice(0,46)}</td>
+      <td>${o==="未分配"?'<span style="color:var(--red)">未分配</span>':o}</td>
+      <td><button class="act" onclick="openWDrawer(${i})">轨迹</button></td></tr>`;}).join("")
+    ||'<tr><td colspan="8" class="hint">无匹配运单</td></tr>';
+  document.getElementById("wlpage").innerHTML=`<span class="hint">命中 ${rows.length} 单 · 第 ${WL.page}/${pages} 页</span>
+    <button class="act" onclick="WL.page=1;renderWaybillList()" ${WL.page<=1?"disabled":""}>«</button>
+    <button class="act" onclick="WL.page--;renderWaybillList()" ${WL.page<=1?"disabled":""}>‹</button>
+    <button class="act" onclick="WL.page++;renderWaybillList()" ${WL.page>=pages?"disabled":""}>›</button>
+    <button class="act" onclick="WL.page=${pages};renderWaybillList()" ${WL.page>=pages?"disabled":""}>»</button>`;
+}
+function openWDrawerByWb(wb){const d=D();const i=(d.waybills||[]).findIndex(w=>w.waybill===wb);if(i>=0)openWDrawer(i);}
+function lookupWb(v){
+  const q=(v||"").trim().toUpperCase();if(!q)return;
+  const d=D();const i=(d.waybills||[]).findIndex(w=>w.waybill===q);
+  if(i>=0){openWDrawer(i);return;}
+  const j=(d.waybills||[]).findIndex(w=>(w.waybill||"").includes(q));
+  if(j>=0){openWDrawer(j);return;}
+  const ex=(d.exceptions||[]).find(e=>(e.waybill||"").includes(q));
+  if(ex){const k=(d.waybills||[]).findIndex(w=>w.waybill===ex.waybill);if(k>=0){openWDrawer(k);return;}}
+  document.getElementById("wdbody").innerHTML='<p class="hint">未找到运单号包含 '+q+' 的运单</p>';
+  document.getElementById("wdrawer").style.display="block";
+}
+function openWDrawer(i){const w=(D().waybills||[])[i];if(!w)return;
+  document.getElementById("wdbody").innerHTML=buildWHTML(w);
+  document.getElementById("wdrawer").style.display="block";}
+function showW(i){openWDrawer(i);}
+function buildWHTML(w){
+  curW=w;
+  const evs=(w.events||[]).map(e=>`<div class="ev"><p class="t">${e.t} <span class="n">· ${e.node||""}${e.loc?" · "+e.loc:""}</span></p><p class="d">${e.desc||""}${e.abnormal&&e.abnormal.length?" · 异常码:"+e.abnormal.join(";"):""}</p></div>`).join("");
+  const ex=(w.exceptions||[]).map(e=>`<span class="badge ${LV[e.level]||"b-gray"}" style="margin-right:6px">${e.type} · ${e.basis}</span>`).join("");
+  return `
+    <div style="border:0.5px solid var(--bd);border-radius:12px;padding:16px 20px">
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <p style="font-weight:500;font-size:14px">${w.waybill} → ${w.dest||"?"} ${w.channel?"· "+w.channel:""}</p>
+        <span class="badge ${w.status===60?"b-red":w.status===50?"b-grn":w.status===40?"b-red":"b-gray"}">TrackingStatus ${w.status??"—"} ${w.status===60?"· 异常":w.status===50?"· 已签收":w.status===40?"· 投递失败":""}</span>
+      </div>
+      <p class="muted" style="margin:4px 0 12px">末端 ${w.provider||"—"} · 跟踪号 ${w.tracking||"—"} · 来源 ${w.source||"—"}${w.pod?` · <a href="${w.pod}" target="_blank">POD 妥投证明</a>`:""}</p>
+      ${ex?`<p style="margin-bottom:12px">${ex}</p>`:""}
+      ${w.fetch_error?`<p class="hint" style="color:var(--red)">拉取失败：${w.fetch_error}</p>`:""}
+      <div class="tl">${evs||'<p class="hint">'+(w.last_desc?("缓存摘要（终态单不再逐日拉全量轨迹）："+w.last_desc):"无轨迹")+'</p>'}</div>
+      <p class="hint">轨迹时间已按 ProcessTimezone 归一化为北京时间展示</p>
+    </div>`;
+}
+window.addEventListener("DOMContentLoaded",()=>{if(sessionStorage.getItem("pm_ok")==="1"&&!document.getElementById("app").classList.contains("hidden"))init()});
